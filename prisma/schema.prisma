@@ -1,0 +1,202 @@
+// prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider          = "postgresql"
+  url               = env("DATABASE_URL")
+  shadowDatabaseUrl = env("SHADOW_DATABASE_URL")
+}
+
+/// ------------------------------------------------------
+/// NextAuth & Accounts
+/// ------------------------------------------------------
+enum UserRole {
+  ADMIN
+  USER
+}
+
+model Account {
+  id                String   @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?  @db.Text
+  access_token      String?  @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?  @db.Text
+  session_state     String?
+  createdAt         DateTime @default(now()) @map(name: "created_at")
+  updatedAt         DateTime @default(now()) @map(name: "updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+  @@map(name: "accounts")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map(name: "sessions")
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?
+  role          UserRole  @default(USER)
+  hashedPassword String?  
+  createdAt     DateTime  @default(now()) @map(name: "created_at")
+  updatedAt     DateTime  @default(now()) @map(name: "updated_at")
+
+  // NextAuth relations
+  accounts Account[]
+  sessions Session[]
+
+  // Parent ↔ Pupils
+  pupils Pupil[] @relation("ParentChildren")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map(name: "verification_tokens")
+}
+
+/// ------------------------------------------------------
+/// Core Domain Models
+/// ------------------------------------------------------
+
+model Pupil {
+  id          String    @id @default(cuid())
+  name        String
+  status      String    @default("UNREGISTERED") // Or use enum
+  parentId    String?
+  parent      User?     @relation("ParentChildren", fields: [parentId], references: [id])
+  classroom   Classroom @relation("ClassStudents", fields: [classroomId], references: [id])
+  classroomId String
+
+  orders      LunchOrder[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model School {
+  id   String @id @default(cuid())
+  name String
+
+  classrooms Classroom[]
+  schedules  Schedule[] // Added back-relation to Schedule
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Classroom {
+  id       String @id @default(cuid())
+  name     String
+  school   School @relation(fields: [schoolId], references: [id])
+  schoolId String
+
+  // Estimated number of students for supplier planning
+  totalPupils Int @default(0)
+
+  pupils Pupil[] @relation("ClassStudents")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+/// ------------------------------------------------------
+/// Meal Selection
+/// ------------------------------------------------------
+
+model MealGroup {
+  id            String @id @default(cuid())
+  name          String
+  maxSelections Int    @default(1)
+
+  choices MealChoice[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model MealChoice {
+  id   String @id @default(cuid())
+  name String
+
+  group   MealGroup @relation(fields: [groupId], references: [id])
+  groupId String
+
+  orderItems OrderItem[] // Updated to point to OrderItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+/// ------------------------------------------------------
+/// Orders
+/// ------------------------------------------------------
+
+model LunchOrder {
+  id      String   @id @default(cuid())
+  date    DateTime
+  pupilId String
+  pupil   Pupil    @relation(fields: [pupilId], references: [id])
+
+  items OrderItem[] // 1 ⟶ N items
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model OrderItem {
+  id      String     @id @default(cuid())
+  orderId String
+  order   LunchOrder @relation(fields: [orderId], references: [id])
+
+  choiceId String
+  choice   MealChoice @relation(fields: [choiceId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+/// ------------------------------------------------------
+/// Unified Schedule (Term/Holiday)
+/// ------------------------------------------------------
+
+enum ScheduleType {
+  TERM
+  HOLIDAY
+}
+model Schedule {
+  id        String      @id @default(cuid())
+  name      String
+  startDate DateTime
+  endDate   DateTime
+  type      ScheduleType // <-- swap 'active' for this
+  school    School      @relation(fields: [schoolId], references: [id])
+  schoolId  String
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+  @@unique([name, schoolId])
+}
