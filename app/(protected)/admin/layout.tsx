@@ -9,7 +9,7 @@ export default async function AdminLayout({
 }) {
 const user = await getCurrentUser()
 if (!user) redirect("/login")
-if (user.role !== "ADMIN") redirect("/dashboard")
+if (user.role !== "ADMIN") redirect("/parent/pupils")
   // 3) Otherwise they’re an admin – render the admin UI
   return <>{children}</>
 }

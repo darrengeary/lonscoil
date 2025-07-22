@@ -10,7 +10,7 @@ export async function middleware(req: NextRequest) {
 
   // PUBLIC (login, register, marketing, etc) → always allowed
   // PROTECTED DASHBOARD → must have token
-  if (p.startsWith("/dashboard")) {
+  if (p.startsWith("/parent/pupils")) {
     const token = await getToken({ req, secret: SECRET, salt: SECRET })
     if (!token) return NextResponse.redirect("/login")
   }
@@ -20,7 +20,7 @@ export async function middleware(req: NextRequest) {
     const token = await getToken({ req, secret: SECRET, salt: SECRET })
     if (!token)             return NextResponse.redirect("/login")
     if (token.role !== "ADMIN") 
-                            return NextResponse.redirect("/dashboard")
+                            return NextResponse.redirect("/parent/pupils")
   }
 
   return NextResponse.next()

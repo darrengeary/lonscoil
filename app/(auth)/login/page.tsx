@@ -13,7 +13,7 @@ export default async function LoginPage() {
   const user = await getCurrentUser()
   if (user) {
     // Already signed in → bounce to dashboard
-    return redirect("/dashboard")
+    return redirect("/parent/pupils")
   }
 
   // 2) If not signed in, render your login form

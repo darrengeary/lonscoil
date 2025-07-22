@@ -14,7 +14,8 @@ interface Props {
     choices: { id: string; name: string }[];
   }[];
   onClose: () => void;
-  onSelect: (dateStr: string, groupId: string, choiceId: string) => void;
+  // Update onSelect signature to accept array:
+  onSelect: (dateStr: string, groupId: string, newChoices: string[]) => void;
 }
 
 export default function DayEditModal({
@@ -29,7 +30,7 @@ export default function DayEditModal({
 
   return (
     <Dialog open onOpenChange={onClose}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="bg-[#fff]  max-w-lg">
         <DialogHeader>
           <DialogTitle>Edit Lunch – {weekday}</DialogTitle>
         </DialogHeader>
@@ -44,14 +45,25 @@ export default function DayEditModal({
               <div className="flex flex-wrap gap-2">
                 {group.choices.map((choice) => {
                   const isChecked = selected.includes(choice.id);
-                  const isDisabled =
-                    !isChecked && selected.length >= group.maxSelections;
+                  // No disabled logic: user can always pick another, replacing oldest if needed
                   return (
                     <Button
                       key={choice.id}
                       variant={isChecked ? "default" : "outline"}
-                      disabled={isDisabled}
-                      onClick={() => onSelect(dateStr, group.id, choice.id)}
+                      onClick={() => {
+                        let next: string[];
+                        if (isChecked) {
+                          // Deselect
+                          next = selected.filter(id => id !== choice.id);
+                        } else if (selected.length < group.maxSelections) {
+                          // Add new
+                          next = [...selected, choice.id];
+                        } else {
+                          // Replace oldest
+                          next = [...selected.slice(1), choice.id];
+                        }
+                        onSelect(dateStr, group.id, next);
+                      }}
                     >
                       {choice.name}
                     </Button>

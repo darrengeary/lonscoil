@@ -8,7 +8,7 @@ function isAdmin(user: any) {
 
 export const GET = auth(async (req: Request) => {
   const { user } = (req as any).auth;
-  if (!user || !isAdmin(user)) {
+  if (!user) {
     return new Response("Unauthorized", { status: 401 });
   }
   const groups = await prisma.mealGroup.findMany({

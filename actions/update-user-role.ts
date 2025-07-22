@@ -15,26 +15,26 @@ export async function updateUserRole(userId: string, data: FormData) {
   try {
     const session = await auth();
 
-    if (!session?.user || session?.user.id !== userId) {
+    // Allow any logged-in user to trigger this
+    if (!session?.user) {
       throw new Error("Unauthorized");
     }
 
     const { role } = userRoleSchema.parse(data);
 
-    // Update the user role.
     await prisma.user.update({
-      where: {
-        id: userId,
-      },
-      data: {
-        role: role,
-      },
+      where: { id: userId },
+      data: { role },
     });
 
-    revalidatePath("/dashboard/settings");
+    revalidatePath("/settings");
+
     return { status: "success" };
   } catch (error) {
-    // console.log(error)
-    return { status: "error" };
+    console.error("updateUserRole error:", error);
+    return {
+      status: "error",
+      message: error instanceof Error ? error.message : "Unknown error",
+    };
   }
 }

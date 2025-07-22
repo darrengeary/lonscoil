@@ -1,11 +1,10 @@
-
-// File: components/supplier/ChoiceManager.tsx
-
+// components/supplier/ChoiceManager.tsx
 "use client";
 
 import { useState } from "react";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Plus, ToggleLeft, ToggleRight } from "lucide-react";
 
 export interface MealChoice {
   id: string;
@@ -14,79 +13,79 @@ export interface MealChoice {
 
 interface Props {
   groupId: string;
-  initialChoices: MealChoice[];
-  maxSelections: number;
+  initialChoices?: MealChoice[];
+  disabled?: boolean;
 }
 
-  export default function ChoiceManager({
-    groupId,
-    initialChoices = [],
-    maxSelections,
-  }: Props) {
-    // ensure choices always starts as an array
-    const [choices, setChoices] = useState<MealChoice[]>(initialChoices || []);
+export default function ChoiceManager({
+  groupId,
+  initialChoices,
+  disabled = false,
+}: Props) {
+  const [choices, setChoices] = useState<MealChoice[]>(initialChoices ?? []);
+  const [adding, setAdding] = useState(false);
   const [newChoice, setNewChoice] = useState("");
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editingName, setEditingName] = useState("");
 
-  async function saveChoice() {
-    const payload = { name: newChoice.trim(), groupId };
-    if (editingId) {
-      const res = await fetch(`/api/mealgroups/${groupId}/choices/${editingId}`, {
-        method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ name: editingName.trim() })
-      });
-      const updated: MealChoice = await res.json();
-      setChoices(c => c.map(ch => ch.id === updated.id ? updated : ch));
-    } else {
-      const res = await fetch(`/api/mealgroups/${groupId}/choices`, {
-        method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload)
-      });
-      const created: MealChoice = await res.json();
-      setChoices(c => [...c, created]);
-    }
-    cancelEdit();
-  }
-
-  async function removeChoice(id: string) {
-    await fetch(`/api/mealgroups/${groupId}/choices/${id}`, { method: 'DELETE' });
-    setChoices(c => c.filter(ch => ch.id !== id));
-  }
-
-  function startEdit(ch: MealChoice) {
-    setEditingId(ch.id);
-    setEditingName(ch.name);
-  }
-
-  function cancelEdit() {
-    setEditingId(null);
+  // Add a new choice
+  async function addChoice() {
+    const res = await fetch(
+      `/api/mealgroups/${groupId}/choices`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: newChoice.trim() }),
+      }
+    );
+    const created: MealChoice = await res.json();
+    setChoices((c) => [...c, created]);
     setNewChoice("");
-    setEditingName("");
+    setAdding(false);
   }
 
   return (
-    <div className="space-y-2">
-      <div className="flex gap-2 mb-2">
-        <Input
-          placeholder={editingId ? "Edit choice name" : "New choice name"}
-          value={editingId ? editingName : newChoice}
-          onChange={e => editingId ? setEditingName(e.target.value) : setNewChoice(e.target.value)}
-        />
-        <Button onClick={saveChoice} disabled={!(editingId ? editingName.trim() : newChoice.trim())}>
-          {editingId ? 'Update' : 'Add'}
+    <div className="mt-2">
+      {choices.map((choice) => (
+        <div
+          key={choice.id}
+          className="flex items-center justify-between py-2"
+        >
+          <span>
+            {choice.name}
+          </span>
+        </div>
+      ))}
+
+      {!adding && !disabled && (
+        <Button
+          variant="outline"
+          className="w-full mt-4 rounded-xl bg-gray-100 text-gray-700 hover:bg-gray-200 flex items-center justify-center gap-2"
+          onClick={() => setAdding(true)}
+        >
+          <Plus size={18} /> Add Choice
         </Button>
-        {editingId && <Button variant="outline" onClick={cancelEdit}>Cancel</Button>}
-      </div>
-      <ul className="space-y-1">
-        {choices.map(ch => (
-          <li key={ch.id} className="flex justify-between items-center">
-            <span>{ch.name}</span>
-            <div className="flex gap-2">
-              <Button size="sm" onClick={() => startEdit(ch)}>Edit</Button>
-              <Button size="sm" variant="destructive" onClick={() => removeChoice(ch.id)}>Delete</Button>
-            </div>
-          </li>
-        ))}
-      </ul>
+      )}
+
+      {adding && !disabled && (
+        <div className="flex gap-2 mt-4">
+          <Input
+            placeholder="New choice name"
+            value={newChoice}
+            onChange={(e) => setNewChoice(e.target.value)}
+          />
+          <Button onClick={addChoice} disabled={!newChoice.trim()}>
+            Publish
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => {
+              setAdding(false);
+              setNewChoice("");
+            }}
+          >
+            Cancel
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

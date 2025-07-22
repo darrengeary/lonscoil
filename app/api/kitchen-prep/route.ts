@@ -1,27 +1,43 @@
 import { auth } from "@/auth";
 import { prisma } from "@/lib/db";
+import { startOfDay, endOfDay } from "date-fns";
 
 export const GET = auth(async (req) => {
   const user = (req as any).auth.user;
-  if (!user || user.role !== "ADMIN") {
-    return new Response("Unauthorized", { status: 401 });
-  }
   const { searchParams } = new URL(req.url);
   const date = searchParams.get("date");
-  const schoolId = searchParams.get("schoolId");
+  let schoolId = searchParams.get("schoolId"); // For ADMIN only
   const classroomId = searchParams.get("classroomId");
 
   if (!date) return new Response("Date required", { status: 400 });
 
-  // Build filters
-  const orderWhere: any = { date: new Date(date) };
-  if (classroomId) {
-    orderWhere.pupil = { classroomId };
-  } else if (schoolId) {
-    orderWhere.pupil = { classroom: { schoolId } };
+  // --- Role-based access control ---
+  if (user?.role === "SCHOOLADMIN") {
+    // SCHOOLADMIN: can only see their own school, ignore schoolId param
+    schoolId = user.schoolId;
+    if (!schoolId) return new Response("No school assigned", { status: 403 });
+  } else if (user?.role === "ADMIN") {
+    // ADMIN: can specify schoolId or "all" (or omit for all schools)
+    if (!schoolId || schoolId === "all") schoolId = null;
+  } else {
+    return new Response("Unauthorized", { status: 401 });
   }
 
-  // GroupBy for performance
+  // --- Build query filter ---
+  const day = new Date(date);
+  const orderWhere: any = {
+    date: { gte: startOfDay(day), lte: endOfDay(day) }
+  };
+
+  if (classroomId && classroomId !== "all") {
+    orderWhere.pupil = { classroomId };
+  } else if (schoolId) {
+    // Filter by school if set (ADMIN with schoolId or SCHOOLADMIN)
+    orderWhere.pupil = { classroom: { schoolId } };
+  }
+  // If no schoolId, ADMIN sees all schools for the date
+
+  // --- Data aggregation ---
   const summary = await prisma.orderItem.groupBy({
     by: ['choiceId'],
     where: { order: orderWhere },

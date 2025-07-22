@@ -31,6 +31,13 @@ import {
   Trash,
   User,
   X,
+  Sandwich,
+  UtensilsCrossed,
+  ReceiptText,
+  School,
+  CalendarDays,
+  DoorOpen,
+  PersonStanding,
 } from "lucide-react";
 
 export type Icon = LucideIcon;
@@ -43,11 +50,18 @@ export const Icons = {
   bookOpen: BookOpen,
   chevronLeft: ChevronLeft,
   chevronRight: ChevronRight,
+  ReceiptText: ReceiptText,
+  sandwich: Sandwich,
   check: Check,
   close: X,
   copy: Copy,
   dashboard: LayoutPanelLeft,
+  UtensilsCrossed: UtensilsCrossed,
   ellipsis: MoreVertical,
+  School: School,
+  CalendarDays: CalendarDays,
+  DoorOpen: DoorOpen,
+  PersonStanding: PersonStanding,
   gitHub: ({ ...props }: LucideProps) => (
     <svg
       aria-hidden="true"

@@ -1,10 +1,10 @@
 "use client";
 
-import { format } from "date-fns";
+import { format, isBefore, startOfDay } from "date-fns";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
-import { MoreVertical, Repeat, Copy } from "lucide-react";
+import { MoreVertical } from "lucide-react";
 
 interface Props {
   date: Date;
@@ -15,7 +15,7 @@ interface Props {
     maxSelections: number;
     choices: { id: string; name: string }[];
   }[];
-  onSelect: (dateStr: string, groupId: string, choiceId: string) => void;
+  onSelect: (dateStr: string, groupId: string, newChoices: string[]) => void;
   onReplicate: (dateStr: string, type: string) => void;
   daysToCopy: number;
   weeksToRepeat: number;
@@ -30,116 +30,139 @@ export default function WeeklyDayCard({
   onSelect,
   onReplicate,
   daysToCopy,
-  weeksToRepeat,
   setDaysToCopy,
+  weeksToRepeat,
   setWeeksToRepeat,
 }: Props) {
   const dateStr = format(date, "yyyy-MM-dd");
-  const weekday = format(date, "EEEE");
+  const weekday = format(date, "EE");
   const hasSelection = Boolean(selections[dateStr]);
+  const today = startOfDay(new Date());
+  const isPast = isBefore(startOfDay(date), today);
+
+  // HIDE past dates entirely
+  if (isPast) return null;
+
+  function handleChoiceSelect(groupId: string, choiceId: string) {
+    const selected = selections[dateStr]?.[groupId] || [];
+    const group = mealGroups.find((g) => g.id === groupId);
+    if (!group) return;
+    const max = group.maxSelections || 1;
+    let next: string[];
+    if (selected.includes(choiceId)) {
+      next = selected.filter((id) => id !== choiceId);
+    } else if (selected.length < max) {
+      next = [...selected, choiceId];
+    } else {
+      next = [...selected.slice(1), choiceId];
+    }
+    onSelect(dateStr, groupId, next);
+  }
 
   return (
-    <Card className="p-4 w-full">
-      <h2 className="font-semibold text-lg mb-2">
-        {weekday}, {format(date, "MMM d")}
-      </h2>
-
-      <div className="flex gap-2 mb-4">
-        <Button
-          variant="link"
-          size="sm"
-          onClick={() => onReplicate(dateStr, "next-days")}
-          disabled={!hasSelection}
-          aria-label={`Copy ${weekday} to rest of week`}
-        >
-          <Copy className="w-4 h-4" /> Rest of week
-        </Button>
-        <Button
-          variant="link"
-          size="sm"
-          onClick={() => onReplicate(dateStr, "weekday-weeks")}
-          disabled={!hasSelection}
-          aria-label={`Repeat ${weekday} for next ${weeksToRepeat} weeks`}
-        >
-          <Repeat className="w-4 h-4" /> Repeat weekly
-        </Button>
+    <Card className="p-5 w-full relative flex flex-col min-h-[320px]">
+      {/* Replicate Menu (top right) */}
+      <div className="absolute top-3 right-3 z-10">
         <Popover>
           <PopoverTrigger asChild>
             <Button
               variant="ghost"
               size="icon"
-              aria-label="Advanced copy options"
+              className="text-muted-foreground"
+              disabled={!hasSelection}
+              aria-label="Actions"
             >
-              <MoreVertical className="w-4 h-4" />
+              <MoreVertical className="w-5 h-5" />
             </Button>
           </PopoverTrigger>
-          <PopoverContent className="w-64 space-y-3">
-            <div>
-              <label className="text-sm font-medium">
-                Copy {weekday} to next X days:
-              </label>
-              <div className="flex items-center gap-2 mt-1">
-                <input
-                  type="number"
-                  min={1}
-                  max={10}
-                  value={daysToCopy}
-                  onChange={(e) => setDaysToCopy(Number(e.target.value))}
-                  className="w-16 border px-2 py-1 rounded"
-                />
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => onReplicate(dateStr, "next-days")}
-                >
-                  Apply
-                </Button>
-              </div>
-            </div>
-            <div>
-              <label className="text-sm font-medium">
-                Repeat {weekday} for next X weeks:
-              </label>
-              <div className="flex items-center gap-2 mt-1">
-                <input
-                  type="number"
-                  min={1}
-                  max={10}
-                  value={weeksToRepeat}
-                  onChange={(e) => setWeeksToRepeat(Number(e.target.value))}
-                  className="w-16 border px-2 py-1 rounded"
-                />
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => onReplicate(dateStr, "weekday-weeks")}
-                >
-                  Apply
-                </Button>
-              </div>
-            </div>
+          <PopoverContent
+            className="w-72 p-4 rounded-2xl border shadow-md text-sm"
+            side="bottom"
+            align="end"
+          >
+            {/* Copy to future days */}
+            <form
+              className="flex flex-wrap items-center gap-2"
+              onSubmit={e => { e.preventDefault(); onReplicate(dateStr, "next-days"); }}
+            >
+              <span>Apply this order for</span>
+              <input
+                type="number"
+                min={1}
+                max={10}
+                value={daysToCopy}
+                onChange={e => setDaysToCopy(Number(e.target.value))}
+                className="w-12 border rounded text-center py-1 px-2 mx-1"
+                style={{ fontSize: "0.9em", boxShadow: "none" }}
+              />
+              <span>more school day{daysToCopy > 1 ? "s" : ""}</span>
+              <Button
+                type="submit"
+                size="sm"
+                variant="default"
+                className="ml-2"
+                disabled={!hasSelection}
+              >
+                Copy
+              </Button>
+            </form>
+
+            <hr className="my-3 border-gray-200" />
+
+            {/* Repeat for weeks */}
+            <form
+              className="flex flex-wrap items-center gap-2"
+              onSubmit={e => { e.preventDefault(); onReplicate(dateStr, "weekday-weeks"); }}
+            >
+              <span>Apply this order to the same weekday for</span>
+              <input
+                type="number"
+                min={1}
+                max={10}
+                value={weeksToRepeat}
+                onChange={e => setWeeksToRepeat(Number(e.target.value))}
+                className="w-12 border rounded text-center py-1 px-2 mx-1"
+                style={{ fontSize: "0.9em", boxShadow: "none" }}
+              />
+              <span>more week{weeksToRepeat > 1 ? "s" : ""}</span>
+              <Button
+                type="submit"
+                size="sm"
+                variant="default"
+                className="ml-2"
+                disabled={!hasSelection}
+              >
+                Repeat
+              </Button>
+            </form>
           </PopoverContent>
         </Popover>
       </div>
 
+      <h2 className="font-semibold text-lg mb-3 pr-10">
+        {weekday}, {format(date, "MMM d")}
+      </h2>
+
+      {/* Choices UI */}
       {mealGroups.map((group) => {
         const selected = selections[dateStr]?.[group.id] || [];
         return (
           <section key={group.id} className="mb-4">
             <h3 className="font-medium text-sm mb-1">
-              {group.name} (up to {group.maxSelections})
+              {group.name}{" "}
+              <span className="text-xs text-muted-foreground">
+                (choose up to {group.maxSelections})
+              </span>
             </h3>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-2 items-center">
               {group.choices.map((choice) => {
                 const isChecked = selected.includes(choice.id);
-                const isDisabled =
-                  !isChecked && selected.length >= group.maxSelections;
                 return (
                   <Button
                     key={choice.id}
                     variant={isChecked ? "default" : "outline"}
-                    disabled={isDisabled}
-                    onClick={() => onSelect(dateStr, group.id, choice.id)}
+                    aria-pressed={isChecked}
+                    onClick={() => handleChoiceSelect(group.id, choice.id)}
                   >
                     {choice.name}
                   </Button>

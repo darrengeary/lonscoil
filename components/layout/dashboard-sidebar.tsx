@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { NavItem, SidebarNavItem } from "@/types";
 import { Menu, PanelLeftClose, PanelRightClose } from "lucide-react";
+import Image from "next/image";
 
 import { siteConfig } from "@/config/site";
 import { cn } from "@/lib/utils";
@@ -20,7 +21,6 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import ProjectSwitcher from "@/components/dashboard/project-switcher";
-import { UpgradeCard } from "@/components/dashboard/upgrade-card";
 import { Icons } from "@/components/shared/icons";
 
 interface DashboardSidebarProps {
@@ -72,7 +72,16 @@ export function DashboardSidebar({ links }: DashboardSidebarProps) {
           >
             <div className="flex h-full max-h-screen flex-1 flex-col gap-2">
               <div className="flex h-14 items-center p-4 lg:h-[60px]">
-                {isSidebarExpanded ? <ProjectSwitcher /> : null}
+                {isSidebarExpanded ?               <Link href="/" className="flex items-center">
+                {/* serve the 2× file but display it at ~180‑240 px wide */}
+                <img
+                  src="../lunchlog.png"
+                  alt="LunchLog"
+                  width={240}   // intrinsic
+                  height={60}
+                  className="w-[180px] max-w-[240px] h-auto pt-5 pb-3" // scales on resize
+                />
+              </Link> : null}
 
                 <Button
                   variant="ghost"
@@ -166,10 +175,6 @@ export function DashboardSidebar({ links }: DashboardSidebarProps) {
                   </section>
                 ))}
               </nav>
-
-              <div className="mt-auto xl:p-4">
-                {isSidebarExpanded ? <UpgradeCard /> : null}
-              </div>
             </div>
           </aside>
         </ScrollArea>
@@ -192,25 +197,38 @@ export function MobileSheetSidebar({ links }: DashboardSidebarProps) {
             size="icon"
             className="size-9 shrink-0 md:hidden"
           >
+            
             <Menu className="size-5" />
             <span className="sr-only">Toggle navigation menu</span>
           </Button>
         </SheetTrigger>
+  {/* Logo: absolutely centered */}
+  <Link href="/" className="md-hidden absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center">
+    <Image
+      src="/lunchlog.png"
+      alt="LunchLog"
+      width={180}
+      height={48}
+      style={{ objectFit: "contain", width: 140, height: "auto" }} // keeps logo crisp
+      priority
+    />
+  </Link>
+
         <SheetContent side="left" className="flex flex-col p-0">
           <ScrollArea className="h-full overflow-y-auto">
             <div className="flex h-screen flex-col">
               <nav className="flex flex-1 flex-col gap-y-8 p-6 text-lg font-medium">
-                <Link
-                  href="#"
-                  className="flex items-center gap-2 text-lg font-semibold"
-                >
-                  <Icons.logo className="size-6" />
-                  <span className="font-urban text-xl font-bold">
-                    {siteConfig.name}
-                  </span>
-                </Link>
-
-                <ProjectSwitcher large />
+              <Link href="/" className="flex items-center">
+                {/* serve the 2× file but display it at ~180‑240 px wide */}
+                <img
+                  src="../lunchlog.png"
+                  alt="LunchLog"
+                  width={240}   // intrinsic
+                  height={60}
+                  className="w-[180px] max-w-[240px] h-auto" // scales on resize
+                />
+              </Link>
+              
 
                 {links.map((section) => (
                   <section
@@ -255,10 +273,6 @@ export function MobileSheetSidebar({ links }: DashboardSidebarProps) {
                     })}
                   </section>
                 ))}
-
-                <div className="mt-auto">
-                  <UpgradeCard />
-                </div>
               </nav>
             </div>
           </ScrollArea>

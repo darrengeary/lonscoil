@@ -75,7 +75,7 @@ export default function AddPupilModal({ open, onClose, onClaimed }: Props) {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
       <form
         onSubmit={handleClaim}
-        className="bg-background p-6 rounded-xl shadow-xl w-full max-w-sm space-y-4"
+        className="bg-[#fff] p-6 rounded-xl shadow-xl w-full max-w-sm space-y-4"
       >
         <h2 className="text-lg font-semibold flex items-center gap-2">
           Claim Pupil

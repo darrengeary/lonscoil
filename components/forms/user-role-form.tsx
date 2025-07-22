@@ -84,8 +84,9 @@ export function UserRoleForm({ user }: UserNameFormProps) {
                     onValueChange={(value: UserRole) => {
                       setUpdated(user.role !== value);
                       setRole(value);
-                      // field.onChange;
+                      field.onChange(value); // ✅ update react-hook-form's internal value
                     }}
+
                     name={field.name}
                     defaultValue={user.role}
                   >

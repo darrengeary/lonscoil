@@ -13,8 +13,6 @@ import { cn } from "@/lib/utils";
 import { DocsSidebarNav } from "@/components/docs/sidebar-nav";
 import { Icons } from "@/components/shared/icons";
 
-import { ModeToggle } from "./mode-toggle";
-
 export function NavMobile() {
   const { data: session } = useSession();
   const [open, setOpen] = useState(false);
@@ -88,7 +86,7 @@ export function NavMobile() {
 
               <li className="py-3">
                 <Link
-                  href="/dashboard"
+                  href="/parent/pupils"
                   onClick={() => setOpen(false)}
                   className="flex w-full font-medium capitalize"
                 >
@@ -128,11 +126,7 @@ export function NavMobile() {
         ) : null}
 
         <div className="mt-5 flex items-center justify-end space-x-4">
-          <Link href={siteConfig.links.github} target="_blank" rel="noreferrer">
-            <Icons.gitHub className="size-6" />
-            <span className="sr-only">GitHub</span>
-          </Link>
-          <ModeToggle />
+
         </div>
       </nav>
     </>

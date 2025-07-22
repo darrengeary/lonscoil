@@ -1,4 +1,3 @@
-// app/api/pupils/route.ts
 import { auth } from "@/auth";
 import { prisma } from "@/lib/db";
 import { UserRole } from "@prisma/client";
@@ -12,11 +11,27 @@ export const GET = auth(async (req) => {
   const { searchParams } = new URL(req.url);
   const classroomId = searchParams.get("classroomId");
 
-  // 1) Admin: they can filter by classroom
+  // ADMIN: any classroom
   if (user.role === UserRole.ADMIN) {
-    if (!classroomId) {
-      // No classroomId: return empty array (JSON)
-      return Response.json([]);
+    if (!classroomId) return Response.json([]);
+    const pupils = await prisma.pupil.findMany({
+      where: { classroomId },
+      orderBy: { createdAt: "asc" },
+      include: { classroom: { select: { name: true } } },
+    });
+    return Response.json(pupils);
+  }
+
+  // SCHOOLADMIN: only classrooms in their school
+  if (user.role === UserRole.SCHOOLADMIN) {
+    if (!classroomId) return Response.json([]);
+    // Check that classroom belongs to their school
+    const classroom = await prisma.classroom.findUnique({
+      where: { id: classroomId },
+      select: { schoolId: true },
+    });
+    if (!classroom || classroom.schoolId !== user.schoolId) {
+      return Response.json({ error: "Forbidden" }, { status: 403 });
     }
     const pupils = await prisma.pupil.findMany({
       where: { classroomId },
@@ -26,7 +41,7 @@ export const GET = auth(async (req) => {
     return Response.json(pupils);
   }
 
-  // 2) User (parent): only show their own pupils, with classroom name
+  // PARENT: only their pupils
   if (user.role === UserRole.USER) {
     const pupils = await prisma.pupil.findMany({
       where: { parentId: user.id },
@@ -36,11 +51,9 @@ export const GET = auth(async (req) => {
     return Response.json(pupils);
   }
 
-  // 3) Shouldn’t happen, but block any other role
   return Response.json({ error: "Forbidden" }, { status: 403 });
 });
 
-// Add your PUT handler from earlier in the file!
 export const PUT = auth(async (req) => {
   const user = req.auth?.user;
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
@@ -50,7 +63,7 @@ export const PUT = auth(async (req) => {
     return Response.json({ error: "Invalid input" }, { status: 400 });
   }
 
-  // Only allow editing own pupils unless admin
+  // Only ADMIN can edit any pupil; USER can edit their own
   const where =
     user.role === UserRole.ADMIN
       ? { id }

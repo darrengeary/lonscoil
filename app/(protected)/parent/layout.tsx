@@ -5,7 +5,7 @@ import { getCurrentUser } from "@/lib/session";
 export default async function ParentLayout({ children }: { children: React.ReactNode }) {
   const user = await getCurrentUser();
   if (!user) return redirect("/login");
-  if (user.role !== "USER") return redirect("/dashboard");
+  if (user.role !== "USER") return redirect("/parent/pupils");
 
   return <>{children}</>;
 }

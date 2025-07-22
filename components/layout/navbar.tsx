@@ -12,7 +12,6 @@ import { cn } from "@/lib/utils";
 import { useScroll } from "@/hooks/use-scroll";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { DocsSearch } from "@/components/docs/search";
 import { ModalContext } from "@/components/modals/providers";
 import { Icons } from "@/components/shared/icons";
 import MaxWidthWrapper from "@/components/shared/max-width-wrapper";
@@ -21,6 +20,13 @@ interface NavBarProps {
   scroll?: boolean;
   large?: boolean;
 }
+
+const dashboardRoutes: Record<string, string> = {
+  ADMIN: "/admin",
+  USER: "/parent/pupils",
+  TEACHER: "/teacher",
+  SCHOOLADMIN: "/school-admin",
+};
 
 export function NavBar({ scroll = false }: NavBarProps) {
   const scrolled = useScroll(50);
@@ -36,6 +42,10 @@ export function NavBar({ scroll = false }: NavBarProps) {
 
   const links =
     (selectedLayout && configMap[selectedLayout]) || marketingConfig.mainNav;
+
+  const dashboardHref = session?.user?.role
+    ? dashboardRoutes[session.user.role] || "/dashboard"
+    : "/dashboard";
 
   return (
     <header
@@ -67,7 +77,7 @@ export function NavBar({ scroll = false }: NavBarProps) {
                     item.href.startsWith(`/${selectedLayout}`)
                       ? "text-foreground"
                       : "text-foreground/60",
-                    item.disabled && "cursor-not-allowed opacity-80",
+                    item.disabled && "cursor-not-allowed opacity-80"
                   )}
                 >
                   {item.title}
@@ -78,33 +88,8 @@ export function NavBar({ scroll = false }: NavBarProps) {
         </div>
 
         <div className="flex items-center space-x-3">
-          {/* right header for docs */}
-          {documentation ? (
-            <div className="hidden flex-1 items-center space-x-4 sm:justify-end lg:flex">
-              <div className="hidden lg:flex lg:grow-0">
-                <DocsSearch />
-              </div>
-              <div className="flex lg:hidden">
-                <Icons.search className="size-6 text-muted-foreground" />
-              </div>
-              <div className="flex space-x-4">
-                <Link
-                  href={siteConfig.links.github}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  <Icons.gitHub className="size-7" />
-                  <span className="sr-only">GitHub</span>
-                </Link>
-              </div>
-            </div>
-          ) : null}
-
           {session ? (
-            <Link
-              href={session.user.role === "ADMIN" ? "/admin" : "/dashboard"}
-              className="hidden md:block"
-            >
+            <Link href={dashboardHref} className="hidden md:block">
               <Button
                 className="gap-2 px-5"
                 variant="default"

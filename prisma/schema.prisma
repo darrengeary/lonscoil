@@ -1,5 +1,3 @@
-// prisma/schema.prisma
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -11,12 +9,24 @@ datasource db {
 }
 
 /// ------------------------------------------------------
-/// NextAuth & Accounts
+/// Enums
 /// ------------------------------------------------------
+
 enum UserRole {
   ADMIN
   USER
+  SCHOOLADMIN
+  TEACHER
 }
+
+enum ScheduleType {
+  TERM
+  HOLIDAY
+}
+
+/// ------------------------------------------------------
+/// Auth Models
+/// ------------------------------------------------------
 
 model Account {
   id                String   @id @default(cuid())
@@ -31,14 +41,14 @@ model Account {
   scope             String?
   id_token          String?  @db.Text
   session_state     String?
-  createdAt         DateTime @default(now()) @map(name: "created_at")
-  updatedAt         DateTime @default(now()) @map(name: "updated_at")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @default(now()) @map("updated_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([provider, providerAccountId])
   @@index([userId])
-  @@map(name: "accounts")
+  @@map("accounts")
 }
 
 model Session {
@@ -46,29 +56,11 @@ model Session {
   sessionToken String   @unique
   userId       String
   expires      DateTime
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
-  @@map(name: "sessions")
-}
-
-model User {
-  id            String    @id @default(cuid())
-  name          String?
-  email         String?   @unique
-  emailVerified DateTime?
-  image         String?
-  role          UserRole  @default(USER)
-  hashedPassword String?  
-  createdAt     DateTime  @default(now()) @map(name: "created_at")
-  updatedAt     DateTime  @default(now()) @map(name: "updated_at")
-
-  // NextAuth relations
-  accounts Account[]
-  sessions Session[]
-
-  // Parent ↔ Pupils
-  pupils Pupil[] @relation("ParentChildren")
+  @@map("sessions")
 }
 
 model VerificationToken {
@@ -77,51 +69,92 @@ model VerificationToken {
   expires    DateTime
 
   @@unique([identifier, token])
-  @@map(name: "verification_tokens")
+  @@map("verification_tokens")
 }
 
 /// ------------------------------------------------------
-/// Core Domain Models
+/// Users
 /// ------------------------------------------------------
 
-model Pupil {
-  id          String    @id @default(cuid())
-  name        String
-  status      String    @default("UNREGISTERED") // Or use enum
-  parentId    String?
-  parent      User?     @relation("ParentChildren", fields: [parentId], references: [id])
-  classroom   Classroom @relation("ClassStudents", fields: [classroomId], references: [id])
-  classroomId String
+model User {
+  id             String    @id @default(cuid())
+  name           String?
+  email          String?   @unique
+  emailVerified  DateTime?
+  image          String?
+  role           UserRole  @default(USER)
+  hashedPassword String?
 
-  orders      LunchOrder[]
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  // SCHOOLADMIN: Assigned to a school
+  schoolId String? @map("school_id")
+  school   School? @relation("UserToSchool", fields: [schoolId], references: [id])
+
+  // TEACHER: Many-to-many with classrooms
+  teachingClassrooms Classroom[] @relation("TeachersClassrooms")
+
+  // PARENT: Linked to pupils (children)
+  pupils Pupil[] @relation("ParentChildren")
+
+  // Auth relations (for NextAuth or similar)
+  accounts Account[]
+  sessions Session[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
 }
+
+/// ------------------------------------------------------
+/// Schools
+/// ------------------------------------------------------
 
 model School {
   id   String @id @default(cuid())
   name String
 
+  /// ← All users in this school
+  users User[] @relation("UserToSchool")
+
   classrooms Classroom[]
-  schedules  Schedule[] // Added back-relation to Schedule
+  schedules  Schedule[]
+}
+
+/// ------------------------------------------------------
+/// Classrooms & Pupils
+/// ------------------------------------------------------
+
+model Classroom {
+  id   String @id @default(cuid())
+  name String
+
+  school   School @relation(fields: [schoolId], references: [id])
+  schoolId String
+
+  totalPupils Int @default(0)
+
+  pupils Pupil[] @relation("ClassStudents")
+
+  // Many-to-many to teachers
+  teachers User[] @relation("TeachersClassrooms")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
 
-model Classroom {
-  id       String @id @default(cuid())
-  name     String
-  school   School @relation(fields: [schoolId], references: [id])
-  schoolId String
+model Pupil {
+  id     String @id @default(cuid())
+  name   String
+  status String @default("UNREGISTERED")
 
-  // Estimated number of students for supplier planning
-  totalPupils Int @default(0)
+  parentId String?
+  parent   User?   @relation("ParentChildren", fields: [parentId], references: [id])
 
-  pupils Pupil[] @relation("ClassStudents")
+  classroomId String
+  classroom   Classroom @relation("ClassStudents", fields: [classroomId], references: [id])
+
+  orders LunchOrder[]
 
   createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  updatedAt DateTime @default(now()) @updatedAt
 }
 
 /// ------------------------------------------------------
@@ -146,10 +179,10 @@ model MealChoice {
   group   MealGroup @relation(fields: [groupId], references: [id])
   groupId String
 
-  orderItems OrderItem[] // Updated to point to OrderItem[]
+  orderItems OrderItem[]
 
   createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  updatedAt DateTime @default(now()) @updatedAt
 }
 
 /// ------------------------------------------------------
@@ -162,41 +195,43 @@ model LunchOrder {
   pupilId String
   pupil   Pupil    @relation(fields: [pupilId], references: [id])
 
-  items OrderItem[] // 1 ⟶ N items
+  items OrderItem[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@unique([pupilId, date])
 }
 
 model OrderItem {
-  id      String     @id @default(cuid())
-  orderId String
-  order   LunchOrder @relation(fields: [orderId], references: [id])
+  id        String     @id @default(cuid())
+  orderId   String
+  order     LunchOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
-  choiceId String
-  choice   MealChoice @relation(fields: [choiceId], references: [id])
+  choiceId  String
+  choice    MealChoice @relation(fields: [choiceId], references: [id])
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
 }
 
+
 /// ------------------------------------------------------
-/// Unified Schedule (Term/Holiday)
+/// Schedule (Term/Holiday)
 /// ------------------------------------------------------
 
-enum ScheduleType {
-  TERM
-  HOLIDAY
-}
 model Schedule {
-  id        String      @id @default(cuid())
+  id        String       @id @default(cuid())
   name      String
   startDate DateTime
   endDate   DateTime
-  type      ScheduleType // <-- swap 'active' for this
-  school    School      @relation(fields: [schoolId], references: [id])
-  schoolId  String
-  createdAt DateTime    @default(now())
-  updatedAt DateTime    @updatedAt
+  type      ScheduleType
+
+  school   School @relation(fields: [schoolId], references: [id])
+  schoolId String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@unique([name, schoolId])
 }
