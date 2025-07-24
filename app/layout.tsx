@@ -2,8 +2,6 @@ import "@/styles/globals.css";
 
 import { fontGeist, fontHeading, fontSans, fontUrban } from "@/assets/fonts";
 import { SessionProvider } from "next-auth/react";
-import { ThemeProvider } from "next-themes";
-
 import { cn, constructMetadata } from "@/lib/utils";
 import { Toaster } from "@/components/ui/sonner";
 import { Analytics } from "@/components/analytics";
@@ -30,17 +28,10 @@ export default function RootLayout({ children }: RootLayoutProps) {
         )}
       >
         <SessionProvider>
-          <ThemeProvider
-            attribute="class"
-            defaultTheme="system"
-            enableSystem
-            disableTransitionOnChange
-          >
             <ModalProvider>{children}</ModalProvider>
             <Analytics />
             <Toaster richColors closeButton />
             <TailwindIndicator />
-          </ThemeProvider>
         </SessionProvider>
       </body>
     </html>
