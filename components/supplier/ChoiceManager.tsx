@@ -66,7 +66,7 @@ export default function ChoiceManager({
       )}
 
       {adding && !disabled && (
-        <div className="flex gap-2 mt-4">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2 w-full">
           <Input
             placeholder="New choice name"
             value={newChoice}

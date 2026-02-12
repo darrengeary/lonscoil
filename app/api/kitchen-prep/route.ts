@@ -8,6 +8,7 @@ export const GET = auth(async (req) => {
   const date = searchParams.get("date");
   let schoolId = searchParams.get("schoolId"); // For ADMIN only
   const classroomId = searchParams.get("classroomId");
+  const mealGroupId = searchParams.get("mealGroupId");
 
   if (!date) return new Response("Date required", { status: 400 });
 
@@ -38,9 +39,24 @@ export const GET = auth(async (req) => {
   // If no schoolId, ADMIN sees all schools for the date
 
   // --- Data aggregation ---
+  // If mealGroupId is set, get all choiceIds for that group
+  let filterChoiceIds: string[] | undefined = undefined;
+  if (mealGroupId && mealGroupId !== "all") {
+    const group = await prisma.mealGroup.findUnique({
+      where: { id: mealGroupId },
+      include: { choices: { select: { id: true } } },
+    });
+    if (group) {
+      filterChoiceIds = group.choices.map(c => c.id);
+    }
+  }
+
   const summary = await prisma.orderItem.groupBy({
     by: ['choiceId'],
-    where: { order: orderWhere },
+    where: {
+      order: orderWhere,
+      ...(filterChoiceIds ? { choiceId: { in: filterChoiceIds } } : {}),
+    },
     _count: { choiceId: true },
   });
 

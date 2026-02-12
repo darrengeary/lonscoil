@@ -38,11 +38,11 @@ export const GET = auth(async (req) => {
     orderBy: { createdAt: "asc" },
   });
 
-  // Count pupils by status
+  // Count pupils by status (registered = status === "active")
   const result = classrooms.map((cls) => {
     let registeredCount = 0, unregisteredCount = 0;
     for (const pupil of cls.pupils) {
-      if (pupil.status === "REGISTERED") registeredCount++;
+      if (pupil.status === "ACTIVE") registeredCount++;
       else unregisteredCount++;
     }
     return {

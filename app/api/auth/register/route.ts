@@ -48,7 +48,7 @@ export async function POST(req: Request) {
     });
     await tx.pupil.updateMany({
       where: { id: { in: codes }, status: "UNREGISTERED" },
-      data:  { parentId: user.id, status: "REGISTERED" },
+      data:  { parentId: user.id, status: "ACTIVE" },
     });
   });
 

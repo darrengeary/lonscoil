@@ -78,7 +78,7 @@ export function UserRoleForm({ user }: UserNameFormProps) {
               name="role"
               render={({ field }) => (
                 <FormItem className="w-full space-y-0">
-                  <FormLabel className="sr-only">Role</FormLabel>
+                  <FormLabel className="sr-only">FOR DEMO TESTING</FormLabel>
                   <Select
                     // TODO:(FIX) Option value not update. Use useState for the moment
                     onValueChange={(value: UserRole) => {
@@ -122,11 +122,6 @@ export function UserRoleForm({ user }: UserNameFormProps) {
                 </p>
               )}
             </Button>
-          </div>
-          <div className="flex flex-col justify-between p-1">
-            <p className="text-[13px] text-muted-foreground">
-              Remove this field on real production
-            </p>
           </div>
         </SectionColumns>
       </form>

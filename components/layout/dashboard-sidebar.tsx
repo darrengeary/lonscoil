@@ -75,7 +75,7 @@ export function DashboardSidebar({ links }: DashboardSidebarProps) {
                 {isSidebarExpanded ?               <Link href="/" className="flex items-center">
                 {/* serve the 2× file but display it at ~180‑240 px wide */}
                 <img
-                  src="../lunchlog.png"
+                  src="/lunchlog.png"
                   alt="LunchLog"
                   width={240}   // intrinsic
                   height={60}
@@ -217,11 +217,11 @@ export function MobileSheetSidebar({ links }: DashboardSidebarProps) {
         <SheetContent side="left" className="flex flex-col p-0">
           <ScrollArea className="h-full overflow-y-auto">
             <div className="flex h-screen flex-col">
-              <nav className="flex flex-1 flex-col gap-y-8 p-6 text-lg font-medium">
+              <nav className="flex flex-1 flex-col gap-y-8 p-6 text-lg font-medium bg-white">
               <Link href="/" className="flex items-center">
                 {/* serve the 2× file but display it at ~180‑240 px wide */}
                 <img
-                  src="../lunchlog.png"
+                  src="/lunchlog.png"
                   alt="LunchLog"
                   width={240}   // intrinsic
                   height={60}

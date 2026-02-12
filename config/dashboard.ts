@@ -83,7 +83,7 @@ export const sidebarLinks: SidebarNavItem[] = [
         title: "Settings",
       },
       {
-        href: "/",
+        href: "https://lunchlog.ie",
         icon: "home",
         title: "Homepage",
       },

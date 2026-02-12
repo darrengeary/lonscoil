@@ -10,6 +10,8 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Calendar } from "@/components/ui/calendar";
 import { Calendar as CalendarIcon, Printer } from "lucide-react";
 import PrepSummaryTable, { PrepSummaryRow } from "@/components/supplier/PrepSummaryTable";
+// Meal group type
+type MealGroup = { id: string; name: string };
 import { cn } from "@/lib/utils";
 import { DashboardHeader } from "@/components/dashboard/header";
 
@@ -51,12 +53,22 @@ export default function PrepListPage() {
   // Table data
   const [rows, setRows] = useState<PrepSummaryRow[]>([]);
 
-  // Fetch schools on mount
+  // Meal group filter
+  const [mealGroups, setMealGroups] = useState<MealGroup[]>([]);
+  const [mealGroupId, setMealGroupId] = useState("all");
+
+
+  // Fetch schools and meal groups on mount
   useEffect(() => {
     fetch("/api/schools")
       .then(res => res.json())
       .then(data => setSchools([{ id: "all", name: "All Schools" }, ...data]))
       .catch(() => setSchools([{ id: "all", name: "All Schools" }]));
+
+    fetch("/api/mealgroups")
+      .then(res => res.json())
+      .then(data => setMealGroups([{ id: "all", name: "All Meal Groups" }, ...data.map((g: any) => ({ id: g.id, name: g.name }))]))
+      .catch(() => setMealGroups([{ id: "all", name: "All Meal Groups" }]));
   }, []);
 
   // Fetch classrooms when school changes
@@ -73,17 +85,19 @@ export default function PrepListPage() {
     setClassroomId("all");
   }, [schoolId]);
 
+
   // Fetch summary data
   const fetchData = () => {
     let url = `/api/kitchen-prep?date=${date}`;
     if (schoolId && schoolId !== "all") url += `&schoolId=${schoolId}`;
     if (classroomId && classroomId !== "all") url += `&classroomId=${classroomId}`;
+    if (mealGroupId && mealGroupId !== "all") url += `&mealGroupId=${mealGroupId}`;
     fetch(url)
       .then(res => res.json())
       .then((data) => setRows([...data].sort((a, b) => (b.count ?? 0) - (a.count ?? 0))))
       .catch(() => setRows([]));
   };
-  useEffect(fetchData, [date, schoolId, classroomId]);
+  useEffect(fetchData, [date, schoolId, classroomId, mealGroupId]);
 
   // Print handler: just call window.print()
   const handlePrint = () => {
@@ -135,6 +149,19 @@ export default function PrepListPage() {
               </Select>
             </div>
           )}
+          <div>
+            <label className="block text-sm font-medium mb-1">Meal Group</label>
+            <Select value={mealGroupId} onValueChange={setMealGroupId}>
+              <SelectTrigger className="w-48">
+                <SelectValue placeholder="Select Meal Group" />
+              </SelectTrigger>
+              <SelectContent>
+                {mealGroups.map(g => (
+                  <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
           <Button type="button" onClick={handlePrint} className="gap-2">
             <Printer size={18} /> Print
           </Button>

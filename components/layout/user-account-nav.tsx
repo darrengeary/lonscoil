@@ -46,7 +46,7 @@ export function UserAccountNav() {
             className="fixed inset-0 z-40 h-full bg-background/80 backdrop-blur-sm"
             onClick={closeDrawer}
           />
-          <Drawer.Content className="fixed inset-x-0 bottom-0 z-50 mt-24 overflow-hidden rounded-t-[10px] border bg-background px-3 text-sm">
+          <Drawer.Content className="bg-white fixed inset-x-0 bottom-0 z-50 mt-24 overflow-hidden rounded-t-[10px] border bg-background px-3 text-sm">
             <div className="sticky top-0 z-20 flex w-full items-center justify-center bg-inherit">
               <div className="my-3 h-1.5 w-16 rounded-full bg-muted-foreground/20" />
             </div>
@@ -63,7 +63,7 @@ export function UserAccountNav() {
             </div>
 
             <ul role="list" className="mb-14 mt-1 w-full text-muted-foreground">
-              {user.role === "ADMIN" ? (
+              {/* {user.role === "ADMIN" ? (
                 <li className="rounded-lg text-foreground hover:bg-muted">
                   <Link
                     href="/admin"
@@ -85,7 +85,7 @@ export function UserAccountNav() {
                   <LayoutDashboard className="size-4" />
                   <p className="text-sm">Dashboard</p>
                 </Link>
-              </li>
+              </li> */}
 
               <li className="rounded-lg text-foreground hover:bg-muted">
                 <Link
@@ -141,7 +141,7 @@ export function UserAccountNav() {
         </div>
         <DropdownMenuSeparator />
 
-        {user.role === "ADMIN" ? (
+        {/* {user.role === "ADMIN" ? (
           <DropdownMenuItem asChild>
             <Link href="/admin" className="flex items-center space-x-2.5">
               <Lock className="size-4" />
@@ -155,7 +155,7 @@ export function UserAccountNav() {
             <LayoutDashboard className="size-4" />
             <p className="text-sm">Dashboard</p>
           </Link>
-        </DropdownMenuItem>
+        </DropdownMenuItem> */}
 
         <DropdownMenuItem asChild>
           <Link
