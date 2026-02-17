@@ -17,6 +17,7 @@ export const GET = auth(async (req) => {
 
   const pupil = await prisma.pupil.findFirst({
     where: { id: pupilId, parentId: req.auth.user.id },
+    select: { id: true },
   });
   if (!pupil) return new Response("Invalid pupil", { status: 401 });
 
@@ -28,8 +29,14 @@ export const GET = auth(async (req) => {
         lte: endOfDay(new Date(end)),
       },
     },
-    include: {
-      items: true,
+    select: {
+      date: true,
+      items: {
+        select: {
+          choiceId: true,
+          selectedIngredients: true, // ✅ requires schema field
+        },
+      },
     },
     orderBy: { date: "asc" },
   });
@@ -37,66 +44,79 @@ export const GET = auth(async (req) => {
   return Response.json(orders);
 });
 
-// BULK PUT: { pupilId, orders: [{date, items: [{choiceId}]}] }
+// BULK PUT: { pupilId, orders: [{date, items: [{choiceId, selectedIngredients?}]}] }
 export const PUT = auth(async (req) => {
   if (!req.auth) return new Response("Unauthorized", { status: 401 });
 
   try {
-    const { pupilId, orders }: {
+    const body = (await req.json()) as {
       pupilId: string;
-      orders: { date: string; items: { choiceId: string }[] }[];
-    } = await req.json();
+      orders: {
+        date: string;
+        items: { choiceId: string; selectedIngredients?: string[] }[];
+      }[];
+    };
+
+    const { pupilId, orders } = body;
 
     if (!pupilId || !Array.isArray(orders)) {
       return new Response("Missing pupilId or orders", { status: 400 });
     }
 
-    // Authorize pupil
     const pupil = await prisma.pupil.findFirst({
       where: { id: pupilId, parentId: req.auth.user.id },
+      select: { id: true },
     });
     if (!pupil) return new Response("Invalid pupil", { status: 401 });
 
     const today = startOfDay(new Date());
 
-    // Only update today or future!
-    const validOrders = orders.filter(o => !isBefore(startOfDay(new Date(o.date)), today));
+    // Only update today or future
+    const validOrders = orders.filter(
+      (o) => !isBefore(startOfDay(new Date(o.date)), today)
+    );
     if (validOrders.length !== orders.length) {
       return new Response("Cannot update past orders", { status: 400 });
     }
 
-    // Upsert/delete all orders in a transaction (delete+create pattern)
     await prisma.$transaction(async (tx) => {
       for (const o of validOrders) {
         const dateStart = startOfDay(new Date(o.date));
         const dateEnd = endOfDay(new Date(o.date));
-        // Remove existing order/items for that date
-        const ex = await tx.lunchOrder.findMany({
+
+        // delete existing order+items for that day
+        const existing = await tx.lunchOrder.findMany({
           where: { pupilId, date: { gte: dateStart, lte: dateEnd } },
           select: { id: true },
         });
-        const ids = ex.map(e => e.id);
+
+        const ids = existing.map((e) => e.id);
         if (ids.length) {
           await tx.orderItem.deleteMany({ where: { orderId: { in: ids } } });
           await tx.lunchOrder.deleteMany({ where: { id: { in: ids } } });
         }
-        // Only create if there are items
-        if (o.items.length > 0) {
+
+        // create new order if items exist
+        if (o.items?.length) {
           await tx.lunchOrder.create({
             data: {
               pupilId,
               date: dateStart,
-              items: { create: o.items.map(i => ({ choiceId: i.choiceId })) },
+              items: {
+                create: o.items.map((i) => ({
+                  choiceId: i.choiceId,
+                  selectedIngredients: i.selectedIngredients ?? [],
+                })),
+              },
             },
           });
         }
-        // If items.length === 0, we have deleted the order for that day
       }
     });
 
     return new Response("Saved", { status: 200 });
   } catch (e: any) {
     console.error("[lunch-orders.BULK_PUT]", e);
-    return new Response(e.message ?? "Unknown error", { status: 500 });
+    return new Response(e?.message ?? "Unknown error", { status: 500 });
   }
 });

@@ -5,20 +5,34 @@ function isAdmin(user: any) {
   return user && user.role === "ADMIN";
 }
 
+
 export const GET = auth(async (req) => {
   if (!req.auth || !isAdmin(req.auth.user)) {
     return new Response("Unauthorized", { status: 401 });
   }
-  const mealChoices = await prisma.mealChoice.findMany();
+
+  const { searchParams } = new URL(req.url);
+  const groupId = searchParams.get("groupId");
+
+  const mealChoices = await prisma.mealChoice.findMany({
+    where: groupId ? { groupId } : undefined,
+    include: { allergens: true },
+    orderBy: { createdAt: "asc" },
+  });
+
   return Response.json(mealChoices);
 });
+
 
 export const POST = auth(async (req) => {
   if (!req.auth || !isAdmin(req.auth.user)) {
     return new Response("Unauthorized", { status: 401 });
   }
+
   const data = await req.json();
-  const mealChoice = await prisma.mealChoice.create({ data });
+  const { active, ...safe } = data; // <-- drop active
+
+  const mealChoice = await prisma.mealChoice.create({ data: safe });
   return Response.json(mealChoice);
 });
 
@@ -26,9 +40,21 @@ export const PUT = auth(async (req) => {
   if (!req.auth || !isAdmin(req.auth.user)) {
     return new Response("Unauthorized", { status: 401 });
   }
+
   const data = await req.json();
-  const { id, ...update } = data;
-  const mealChoice = await prisma.mealChoice.update({ where: { id }, data: update });
+  const { id, allergenIds, ...rest } = data;
+
+  const mealChoice = await prisma.mealChoice.update({
+    where: { id },
+    data: {
+      ...rest,
+      ...(Array.isArray(allergenIds)
+        ? { allergens: { set: allergenIds.map((aid: string) => ({ id: aid })) } }
+        : {}),
+    },
+    include: { allergens: true },
+  });
+
   return Response.json(mealChoice);
 });
 

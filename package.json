@@ -1,4 +1,5 @@
 {
+  
   "name": "saas-starter",
   "version": "0.3.1",
   "private": true,
@@ -60,6 +61,7 @@
     "@vercel/og": "^0.6.2",
     "bcryptjs": "^3.0.2",
     "class-variance-authority": "^0.7.0",
+    "cloudinary": "^2.9.0",
     "clsx": "^2.1.1",
     "cmdk": "^1.0.0",
     "concurrently": "^8.2.2",

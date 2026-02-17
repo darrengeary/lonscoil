@@ -85,6 +85,8 @@ model User {
   role           UserRole  @default(USER)
   hashedPassword String?
 
+  printJobs PrintJob[] @relation("UserPrintJobs")
+
   // SCHOOLADMIN: Assigned to a school
   schoolId String? @map("school_id")
   school   School? @relation("UserToSchool", fields: [schoolId], references: [id])
@@ -173,17 +175,49 @@ model MealGroup {
 }
 
 model MealChoice {
-  id   String @id @default(cuid())
-  name String
+  id       String @id @default(cuid())
+  name     String
+  imageUrl String? @db.Text
 
   group   MealGroup @relation(fields: [groupId], references: [id])
   groupId String
+
+  // Tags style allergens
+  allergens Allergen[]
+
+  // Ingredients stay simple
+  ingredients String[] @default([])
+
+  // Availability
+  availStart DateTime?
+  availEnd   DateTime?
+
+  // Active toggle
+  active Boolean @default(true)
+
+  // Nutrition
+  caloriesKcal Int?
+  proteinG     Float?
+  carbsG       Float?
+  sugarsG      Float?
+  fatG         Float?
+  saturatesG   Float?
+  fibreG       Float?
+  saltG        Float?
 
   orderItems OrderItem[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
 }
+
+model Allergen {
+  id   String @id @default(cuid())
+  name String @unique
+
+  mealChoices MealChoice[]
+}
+
 
 /// ------------------------------------------------------
 /// Orders
@@ -211,6 +245,8 @@ model OrderItem {
   choiceId  String
   choice    MealChoice @relation(fields: [choiceId], references: [id])
 
+  selectedIngredients String[] @default([])
+
   createdAt DateTime   @default(now())
   updatedAt DateTime   @updatedAt
 }
@@ -234,4 +270,58 @@ model Schedule {
   updatedAt DateTime @updatedAt
 
   @@unique([name, schoolId])
+}
+
+enum PrintJobStatus {
+  CREATED
+  PRINTING
+  PAUSED
+  COMPLETED
+  FAILED
+}
+
+model PrintJob {
+  id          String         @id @default(cuid())
+  createdAt   DateTime       @default(now())
+
+  createdById String?
+  createdBy   User?          @relation("UserPrintJobs", fields: [createdById], references: [id], onDelete: SetNull)
+
+  date        DateTime
+  schoolId    String?
+  classroomId String?
+
+  status      PrintJobStatus @default(CREATED)
+  nextSeq     Int            @default(1)
+  totalLabels Int            @default(0)
+
+  items       PrintJobItem[]
+
+  @@index([date])
+  @@index([status])
+  @@index([createdById])
+}
+
+
+model PrintJobItem {
+  id          String   @id @default(cuid())
+
+  jobId       String
+  job         PrintJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  seq         Int
+
+  pupilId     String
+  pupilName   String
+  classroom   String
+  mealType    String   // "LUNCH" | "SNACK"
+  choice      String
+  extras      String[] @default([])
+
+  printedAt   DateTime?
+  printError  String?
+
+  @@unique([jobId, seq])
+  @@index([jobId, seq])
+  @@index([pupilId])
 }

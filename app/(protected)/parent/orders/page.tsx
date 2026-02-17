@@ -1,7 +1,7 @@
 // app/(protected)/parent/orders/page.tsx
 "use client";
 
-import { useEffect, useMemo, useState, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   format,
   startOfWeek,
@@ -21,20 +21,56 @@ import { toast } from "sonner";
 import WeeklyDayCard from "@/components/parent/WeeklyDayCard";
 import DayEditModal from "@/components/parent/DayEditModal";
 import { DashboardHeader } from "@/components/dashboard/header";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
-  Tabs,
-  TabsList,
-  TabsTrigger,
-  TabsContent,
-} from "@/components/ui/tabs";
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogCancel,
+  AlertDialogAction,
+} from "@/components/ui/alert-dialog";
 
-interface Pupil { id: string; name: string; }
+interface Pupil {
+  id: string;
+  name: string;
+}
+
+type Nutrition = {
+  caloriesKcal?: number | null;
+  proteinG?: number | null;
+  carbsG?: number | null;
+  sugarsG?: number | null;
+  fatG?: number | null;
+  saturatesG?: number | null;
+  fibreG?: number | null;
+  saltG?: number | null;
+};
+
 interface MealGroup {
   id: string;
   name: string;
-  maxSelections: number;
-  choices: { id: string; name: string }[];
+  maxSelections: number; // "up to"
+  choices: ({
+    id: string;
+    name: string;
+    imageUrl?: string | null;
+    ingredients?: string[]; // extras list
+  } & Nutrition)[];
 }
+
+type Selections = Record<
+  string,
+  Record<
+    string,
+    {
+      choiceIds: string[];
+      configByChoiceId: Record<string, { selectedIngredients: string[] }>;
+    }
+  >
+>;
 
 // ---------- Constants & Helpers ----------
 const DATE_FMT = "yyyy-MM-dd";
@@ -51,11 +87,11 @@ async function fetchJSON<T>(
     const res = await fetch(url, init);
     if (!res.ok) return fallback;
     const text = await res.text();
-    if (!text) return fallback; // 204 or empty
+    if (!text) return fallback;
     try {
       return JSON.parse(text) as T;
     } catch {
-      return fallback; // HTML error or malformed JSON
+      return fallback;
     }
   } catch (e: any) {
     if (e?.name === "AbortError" || e?.code === "ABORT_ERR") return fallback;
@@ -64,7 +100,7 @@ async function fetchJSON<T>(
 }
 
 function normalizeDateString(s: string): string {
-  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s; // already yyyy-MM-dd
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
   const d1 = parse(s, ALT_FMT, new Date());
   if (isValid(d1)) return format(d1, DATE_FMT);
   const d2 = new Date(s);
@@ -75,10 +111,14 @@ function normalizeDateString(s: string): string {
 function safeAbort(controller?: AbortController, reason?: unknown) {
   try {
     if (controller && !controller.signal.aborted) {
-      // @ts-ignore optional reason in modern runtimes
+      // @ts-ignore
       controller.abort?.(reason);
     }
-  } catch { /* ignore */ }
+  } catch {}
+}
+
+function deepClone<T>(x: T): T {
+  return JSON.parse(JSON.stringify(x)) as T;
 }
 
 export default function PupilLunchOrdersPage() {
@@ -87,8 +127,9 @@ export default function PupilLunchOrdersPage() {
   const [selectedPupil, setSelectedPupil] = useState<string | null>(null);
 
   const [mealGroups, setMealGroups] = useState<MealGroup[]>([]);
-  // selections[dateStr][groupId] = string[] of choiceIds
-  const [selections, setSelections] = useState<Record<string, Record<string, string[]>>>({});
+  const [selections, setSelections] = useState<Selections>({});
+  const lastLoadedSelectionsRef = useRef<Selections>({}); // for "Cancel changes"
+
   const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date(), { weekStartsOn: 1 }));
   const [calendarMonth, setCalendarMonth] = useState(new Date());
   const [modalDay, setModalDay] = useState<string | null>(null);
@@ -96,14 +137,16 @@ export default function PupilLunchOrdersPage() {
   const [saving, setSaving] = useState(false);
   const mountedRef = useRef(true);
 
-  // replicate state
   const [daysToCopy, setDaysToCopy] = useState<Record<string, number>>({});
   const [weeksToRepeat, setWeeksToRepeat] = useState<Record<string, number>>({});
   const [activeTab, setActiveTab] = useState<"weekly" | "calendar">("weekly");
 
-  // ORDERABLE & HOLIDAY days from server (normalized to yyyy-MM-dd)
   const [orderableDays, setOrderableDays] = useState<Set<string>>(new Set());
   const [holidayDays, setHolidayDays] = useState<Set<string>>(new Set());
+
+  // Navigation guard state
+  const [guardOpen, setGuardOpen] = useState(false);
+  const pendingNavRef = useRef<null | (() => void)>(null);
 
   // ---------- Fetch pupils ----------
   useEffect(() => {
@@ -136,50 +179,102 @@ export default function PupilLunchOrdersPage() {
       { signal: controller.signal },
       { orderable: [], holidays: [] }
     ).then((payload) => {
-      const ord = new Set(payload.orderable.map(normalizeDateString));
-      const hol = new Set(payload.holidays.map(normalizeDateString));
-      setOrderableDays(ord);
-      setHolidayDays(hol);
+      setOrderableDays(new Set(payload.orderable.map(normalizeDateString)));
+      setHolidayDays(new Set(payload.holidays.map(normalizeDateString)));
     });
     return () => safeAbort(controller, "cleanup:orderable");
   }, [selectedPupil]);
 
+  // ----- Weekly View days -----
+  const weekdays = useMemo(
+    () => Array.from({ length: daysInWeek }, (_, i) => addDays(weekStart, i)),
+    [weekStart]
+  );
+
+  const weekISO = useMemo(() => weekdays.map((d) => format(d, DATE_FMT)), [weekdays]);
+
+  // Completion definitions (YOUR RULES)
+  const isGroupComplete = (dateStr: string, groupId: string) => {
+    const ids = selections[dateStr]?.[groupId]?.choiceIds ?? [];
+    return ids.length >= 1; // maxSelections is "up to", group is required so at least 1
+  };
+
+  const isDayComplete = (dateStr: string) => {
+    return mealGroups.length > 0 && mealGroups.every((g) => isGroupComplete(dateStr, g.id));
+  };
+
+  const weekOrderableDays = useMemo(() => weekISO.filter((d) => orderableDays.has(d)), [weekISO, orderableDays]);
+
+  const weekComplete = useMemo(() => {
+    if (activeTab !== "weekly") return true; // only enforce weekly-or-nothing on weekly nav actions
+    if (!mealGroups.length) return false;
+    // only require completion for orderable days
+    return weekOrderableDays.every((d) => isDayComplete(d));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, weekOrderableDays, selections, mealGroups.length]);
+
+  const incompleteWeek = dirty && activeTab === "weekly" && !weekComplete;
+
+  function attemptNav(action: () => void) {
+    // If they have unsaved *incomplete week*, block and force "complete or cancel"
+    if (incompleteWeek) {
+      pendingNavRef.current = action;
+      setGuardOpen(true);
+      return;
+    }
+    action();
+  }
+
   // ---------- Fetch orders for visible range ----------
   useEffect(() => {
     if (!selectedPupil) return;
-    if (mealGroups.length === 0) return; // wait until groups arrive
+    if (mealGroups.length === 0) return;
 
     let start: string, end: string;
     if (activeTab === "weekly") {
       start = format(weekStart, DATE_FMT);
       end = format(addDays(weekStart, 4), DATE_FMT);
     } else {
-      const mStart = startOfMonth(calendarMonth);
-      const mEnd = endOfMonth(calendarMonth);
-      start = format(mStart, DATE_FMT);
-      end = format(mEnd, DATE_FMT);
+      start = format(startOfMonth(calendarMonth), DATE_FMT);
+      end = format(endOfMonth(calendarMonth), DATE_FMT);
     }
 
     const controller = new AbortController();
 
-    fetchJSON<Array<{ date: string; items: Array<{ choiceId: string }> }>>(
-      `/api/lunch-orders?pupilId=${encodeURIComponent(selectedPupil)}&start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`,
+    fetchJSON<Array<{ date: string; items: Array<{ choiceId: string; selectedIngredients?: string[] }> }>>(
+      `/api/lunch-orders?pupilId=${encodeURIComponent(selectedPupil)}&start=${encodeURIComponent(
+        start
+      )}&end=${encodeURIComponent(end)}`,
       { signal: controller.signal },
       []
     ).then((orders) => {
-      const sel: typeof selections = {};
+      const sel: Selections = {};
+
       orders.forEach((order) => {
         const dateStr = normalizeDateString(order.date);
         if (!sel[dateStr]) sel[dateStr] = {};
+
         order.items.forEach((it) => {
           const choiceId = it.choiceId;
           const group = mealGroups.find((g) => g.choices.some((c) => c.id === choiceId));
           if (!group) return;
-          sel[dateStr][group.id] = sel[dateStr][group.id] || [];
-          sel[dateStr][group.id].push(choiceId);
+
+          if (!sel[dateStr][group.id]) {
+            sel[dateStr][group.id] = { choiceIds: [], configByChoiceId: {} };
+          }
+
+          if (!sel[dateStr][group.id].choiceIds.includes(choiceId)) {
+            sel[dateStr][group.id].choiceIds.push(choiceId);
+          }
+
+          sel[dateStr][group.id].configByChoiceId[choiceId] = {
+            selectedIngredients: it.selectedIngredients ?? [],
+          };
         });
       });
+
       setSelections(sel);
+      lastLoadedSelectionsRef.current = deepClone(sel);
       setDirty(false);
     });
 
@@ -187,14 +282,53 @@ export default function PupilLunchOrdersPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedPupil, weekStart, calendarMonth, mealGroups.length, activeTab]);
 
-  function handleSelect(dateStr: string, groupId: string, newChoices: string[]) {
-    setSelections((prev) => ({
-      ...prev,
-      [dateStr]: {
-        ...prev[dateStr],
-        [groupId]: newChoices,
-      },
-    }));
+  // ---------- Selection updates ----------
+  function handleSelect(dateStr: string, groupId: string, newChoiceIds: string[]) {
+    setSelections((prev) => {
+      const day = prev[dateStr] ?? {};
+      const group = day[groupId] ?? { choiceIds: [], configByChoiceId: {} };
+
+      const nextConfig: typeof group.configByChoiceId = {};
+      for (const cid of newChoiceIds) {
+        nextConfig[cid] = group.configByChoiceId[cid] ?? { selectedIngredients: [] };
+      }
+
+      return {
+        ...prev,
+        [dateStr]: {
+          ...day,
+          [groupId]: {
+            choiceIds: newChoiceIds,
+            configByChoiceId: nextConfig,
+          },
+        },
+      };
+    });
+    setDirty(true);
+  }
+
+  function handleUpdateConfig(dateStr: string, groupId: string, choiceId: string, selectedIngredients: string[]) {
+    setSelections((prev) => {
+      const day = prev[dateStr] ?? {};
+      const group = day[groupId] ?? { choiceIds: [], configByChoiceId: {} };
+
+      // ensure choice exists in selection (defensive)
+      const nextChoiceIds = group.choiceIds.includes(choiceId) ? group.choiceIds : [...group.choiceIds, choiceId];
+
+      return {
+        ...prev,
+        [dateStr]: {
+          ...day,
+          [groupId]: {
+            choiceIds: nextChoiceIds,
+            configByChoiceId: {
+              ...group.configByChoiceId,
+              [choiceId]: { selectedIngredients },
+            },
+          },
+        },
+      };
+    });
     setDirty(true);
   }
 
@@ -212,7 +346,7 @@ export default function PupilLunchOrdersPage() {
         d = addDays(d, 1);
         const f = format(d, DATE_FMT);
         if (!orderableDays.has(f)) continue;
-        updates[f] = JSON.parse(JSON.stringify(base));
+        updates[f] = deepClone(base);
         added++;
       }
       if (Object.keys(updates).length) {
@@ -232,7 +366,7 @@ export default function PupilLunchOrdersPage() {
         if (d.getDay() !== dow) continue;
         const f = format(d, DATE_FMT);
         if (!orderableDays.has(f)) continue;
-        updates[f] = JSON.parse(JSON.stringify(base));
+        updates[f] = deepClone(base);
       }
       if (Object.keys(updates).length) {
         setSelections((prev) => ({ ...prev, ...updates }));
@@ -242,17 +376,29 @@ export default function PupilLunchOrdersPage() {
     }
   }
 
-  // ---------- Save ----------
+  // ---------- Save (weekly-or-nothing enforcement) ----------
   async function handleSaveOrders(showToast = true) {
     if (!selectedPupil) return;
+
+    if (activeTab === "weekly" && !weekComplete) {
+      if (showToast) toast.error("Please complete the week's orders before saving.");
+      return;
+    }
+
     setSaving(true);
+
     const todayStr = format(new Date(), DATE_FMT);
 
     const toSave = Object.entries(selections)
       .filter(([date]) => date >= todayStr && orderableDays.has(date))
       .map(([date, groups]) => ({
         date,
-        items: Object.values(groups).flatMap((arr) => arr.map((id) => ({ choiceId: id }))),
+        items: Object.values(groups).flatMap((g) =>
+          g.choiceIds.map((choiceId) => ({
+            choiceId,
+            selectedIngredients: g.configByChoiceId?.[choiceId]?.selectedIngredients ?? [],
+          }))
+        ),
       }));
 
     try {
@@ -261,12 +407,14 @@ export default function PupilLunchOrdersPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ pupilId: selectedPupil, orders: toSave }),
       });
+
       if (!res.ok) {
         const msg = await res.text();
         if (showToast) toast.error("Failed to save: " + (msg || res.statusText));
       } else {
         if (showToast) toast.success("Orders saved!");
         setDirty(false);
+        lastLoadedSelectionsRef.current = deepClone(selections);
       }
     } catch (e: any) {
       if (showToast) toast.error("Failed to save: " + (e?.message || String(e)));
@@ -275,7 +423,7 @@ export default function PupilLunchOrdersPage() {
     }
   }
 
-  // Warn on browser/tab close if unsaved changes
+  // Warn on browser/tab close if unsaved changes (browser-controlled message)
   useEffect(() => {
     mountedRef.current = true;
     const beforeUnload = (e: BeforeUnloadEvent) => {
@@ -292,40 +440,24 @@ export default function PupilLunchOrdersPage() {
     };
   }, [dirty]);
 
-  // Auto-save on in-app navigation (tab/week/month change)
-  const prevTab = useRef(activeTab);
-  const prevWeek = useRef(weekStart);
-  const prevMonth = useRef(calendarMonth);
-  useEffect(() => {
-    if (!dirty) {
-      prevTab.current = activeTab;
-      prevWeek.current = weekStart;
-      prevMonth.current = calendarMonth;
-      return;
-    }
-    let nav = false;
-    if (prevTab.current !== activeTab) nav = true;
-    if (activeTab === "weekly" && prevWeek.current !== weekStart) nav = true;
-    if (activeTab === "calendar" && prevMonth.current !== calendarMonth) nav = true;
-    if (nav) void handleSaveOrders();
-    prevTab.current = activeTab;
-    prevWeek.current = weekStart;
-    prevMonth.current = calendarMonth;
-  }, [activeTab, weekStart, calendarMonth, dirty]);
+  // Safe wrappers for locked days
+  const today = startOfDay(new Date());
+  const makeSafeOnSelect = (isLocked: boolean) => (d: string, g: string, choices: string[]) => {
+    if (isLocked || !orderableDays.has(d)) return;
+    handleSelect(d, g, choices);
+  };
+  const makeSafeOnUpdate = (isLocked: boolean) => (d: string, g: string, choiceId: string, extras: string[]) => {
+    if (isLocked || !orderableDays.has(d)) return;
+    handleUpdateConfig(d, g, choiceId, extras);
+  };
 
-  // ----- Weekly View -----
-  const weekdays = useMemo(
-    () => Array.from({ length: daysInWeek }, (_, i) => addDays(weekStart, i)),
-    [weekStart]
-  );
-
-  const weekISO = weekdays.map((d) => format(d, DATE_FMT));
+  // ----- Holiday banners -----
   const weekOrderableCount = weekISO.filter((d) => orderableDays.has(d)).length;
   const weekHolidayCount = weekISO.filter((d) => holidayDays.has(d)).length;
   const showHolidayWeekBanner = weekOrderableCount === 0 && weekHolidayCount === daysInWeek;
   const showPartialHolidayBanner = weekHolidayCount > 0 && weekHolidayCount < daysInWeek;
 
-  // ----- Calendar View -----
+  // ----- Calendar View grid -----
   const firstOfMonth = startOfMonth(calendarMonth);
   const lastOfMonth = endOfMonth(calendarMonth);
   const gridStart = startOfWeek(firstOfMonth, { weekStartsOn: 1 });
@@ -333,42 +465,40 @@ export default function PupilLunchOrdersPage() {
   const allDays = eachDayOfInterval({ start: gridStart, end: gridEnd });
   const calendarDays = allDays.filter((d) => getDay(d) !== 0 && getDay(d) !== 6);
 
-  // Compare by day, not time
-  const today = startOfDay(new Date());
-
-  // Safe wrappers so WeeklyDayCard doesn't need to change
-  const makeSafeOnSelect = (isLocked: boolean) => (d: string, g: string, choices: string[]) => {
-    if (isLocked || !orderableDays.has(d)) return;
-    handleSelect(d, g, choices);
-  };
-  const safeOnReplicate = (d: string, type: "next-days" | "weekday-weeks") =>
-    handleReplicateGuarded(d, type);
-
   return (
     <div className="space-y-6">
       <DashboardHeader heading="Lunch Orders" text="Manage your pupils’ lunch orders." />
+
       <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-6">
         <select
           className="border px-3 py-2 rounded-lg text-base bg-white shadow-sm w-full sm:w-60"
           disabled={loadingPupils}
           value={selectedPupil || ""}
-          onChange={(e) => setSelectedPupil(e.target.value)}
+          onChange={(e) => {
+            const next = e.target.value;
+            attemptNav(() => setSelectedPupil(next));
+          }}
           aria-label="Select pupil"
         >
           {pupils.map((p) => (
-            <option key={p.id} value={p.id}>{p.name}</option>
+            <option key={p.id} value={p.id}>
+              {p.name}
+            </option>
           ))}
         </select>
+
         <div className="relative">
           <Button
             className="whitespace-nowrap"
             onClick={() => handleSaveOrders()}
-            disabled={!dirty || saving || !selectedPupil}
-            aria-disabled={!dirty || saving || !selectedPupil}
+            disabled={!dirty || saving || !selectedPupil || (activeTab === "weekly" && !weekComplete)}
+            aria-disabled={!dirty || saving || !selectedPupil || (activeTab === "weekly" && !weekComplete)}
+            title={activeTab === "weekly" && !weekComplete ? "Complete the week before saving" : undefined}
           >
             {saving ? "Saving…" : "Save Orders"}
             {dirty && !saving && " (unsaved)"}
           </Button>
+
           {dirty && !saving && (
             <span
               className="absolute -top-1 -right-1 h-3 w-3 rounded-full bg-red-500 border-2 border-white shadow"
@@ -376,9 +506,18 @@ export default function PupilLunchOrdersPage() {
             />
           )}
         </div>
+
+        {activeTab === "weekly" && (
+          <div className="text-sm text-muted-foreground">
+            Week status: {weekComplete ? "Complete" : "Incomplete"} {weekOrderableDays.length ? `(${weekOrderableDays.filter(isDayComplete).length}/${weekOrderableDays.length} days)` : ""}
+          </div>
+        )}
       </div>
 
-      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as typeof activeTab)}>
+      <Tabs
+        value={activeTab}
+        onValueChange={(v) => attemptNav(() => setActiveTab(v as typeof activeTab))}
+      >
         <TabsList className="mb-4">
           <TabsTrigger value="weekly">Weekly View</TabsTrigger>
           <TabsTrigger value="calendar">Calendar View</TabsTrigger>
@@ -388,20 +527,21 @@ export default function PupilLunchOrdersPage() {
           <div className="flex items-center justify-between mb-4">
             <Button
               variant="ghost"
-              onClick={() => setWeekStart(addWeeks(weekStart, -1))}
+              onClick={() => attemptNav(() => setWeekStart(addWeeks(weekStart, -1)))}
               disabled={isBefore(addWeeks(weekStart, -1), startOfWeek(today, { weekStartsOn: 1 }))}
             >
               ← Previous Week
             </Button>
+
             <span className="font-medium text-lg">
               {format(weekStart, "MMM d")} – {format(addDays(weekStart, 4), "MMM d")}
             </span>
-            <Button variant="ghost" onClick={() => setWeekStart(addWeeks(weekStart, 1))}>
+
+            <Button variant="ghost" onClick={() => attemptNav(() => setWeekStart(addWeeks(weekStart, 1)))}>
               Next Week →
             </Button>
           </div>
 
-          {/* Holiday-aware banners */}
           {showHolidayWeekBanner && (
             <div className="text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded-xl p-3 mb-3">
               This week is a school holiday (no ordering).
@@ -418,13 +558,14 @@ export default function PupilLunchOrdersPage() {
             </div>
           )}
 
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+          {/* FULL WIDTH cards on laptop/desktop: ONE COLUMN */}
+          <div className="grid gap-4 grid-cols-1">
             {weekdays.map((date) => {
               const dateStr = format(date, DATE_FMT);
               const isOrderable = orderableDays.has(dateStr);
               const isHoliday = holidayDays.has(dateStr);
-              const isPast = isBefore(startOfDay(date), today);
-              const locked = !isOrderable || isPast;
+              const isPastDay = isBefore(startOfDay(date), today);
+              const locked = !isOrderable || isPastDay;
               const holidayClass = isHoliday ? "ring-1 ring-rose-200 bg-rose-50" : "";
 
               return (
@@ -433,20 +574,27 @@ export default function PupilLunchOrdersPage() {
                   className={`${locked ? "opacity-60 pointer-events-none select-none" : ""} ${holidayClass} rounded-xl`}
                   title={
                     locked
-                      ? (isPast ? "Past day" : isHoliday ? "School holiday" : "Not in term")
+                      ? isPastDay
+                        ? "Past day"
+                        : isHoliday
+                        ? "School holiday"
+                        : "Not in term"
                       : undefined
                   }
                 >
                   <WeeklyDayCard
                     date={date}
+                    className="w-full"
                     selections={selections}
                     mealGroups={mealGroups}
                     onSelect={makeSafeOnSelect(locked)}
-                    onReplicate={safeOnReplicate}
+                    onUpdateConfig={makeSafeOnUpdate(locked)}
+                    onReplicate={(d, type) => handleReplicateGuarded(d, type)}
                     daysToCopy={daysToCopy[dateStr] ?? 3}
                     setDaysToCopy={(n) => setDaysToCopy((prev) => ({ ...prev, [dateStr]: n }))}
                     weeksToRepeat={weeksToRepeat[dateStr] ?? 3}
                     setWeeksToRepeat={(n) => setWeeksToRepeat((prev) => ({ ...prev, [dateStr]: n }))}
+                    disabled={locked}
                   />
                 </div>
               );
@@ -456,79 +604,77 @@ export default function PupilLunchOrdersPage() {
 
         <TabsContent value="calendar">
           <div className="mb-4 flex items-center justify-between">
-            <Button variant="ghost" onClick={() => setCalendarMonth(addWeeks(calendarMonth, -4))}>
+            <Button variant="ghost" onClick={() => attemptNav(() => setCalendarMonth(addWeeks(calendarMonth, -4)))}>
               ← Prev Month
             </Button>
             <span className="font-medium">{format(calendarMonth, "MMMM yyyy")}</span>
-            <Button variant="ghost" onClick={() => setCalendarMonth(addWeeks(calendarMonth, 4))}>
+            <Button variant="ghost" onClick={() => attemptNav(() => setCalendarMonth(addWeeks(calendarMonth, 4)))}>
               Next Month →
             </Button>
           </div>
+
           <div className="grid grid-cols-5 gap-1 border p-2 bg-white rounded-2xl shadow-sm">
             {weekdayLabels.map((d) => (
               <div key={d} className="text-xs font-semibold text-center pb-2">
                 {d}
               </div>
             ))}
+
             {calendarDays.map((date) => {
               const isOverflow = date.getMonth() !== calendarMonth.getMonth();
-              const isPast = isBefore(startOfDay(date), today);
+              const isPastDay = isBefore(startOfDay(date), today);
               const dateStr = format(date, DATE_FMT);
               const isOrderable = orderableDays.has(dateStr);
               const isHoliday = holidayDays.has(dateStr);
+
               const daySelections = selections[dateStr] || {};
-              const hasSelection = Object.values(daySelections).some((arr) => arr && arr.length);
-              const locked = isOverflow || isPast || !isOrderable;
+              const hasSelection = Object.values(daySelections).some((g) => (g?.choiceIds?.length ?? 0) > 0);
+              const locked = isOverflow || isPastDay || !isOrderable;
 
               return (
                 <div
                   key={dateStr}
                   className={[
                     "h-24 rounded flex flex-col items-start justify-between p-1 relative transition",
-                    isOverflow ? "bg-gray-100 text-gray-400" : isHoliday ? "bg-rose-50 ring-1 ring-rose-200" : "bg-white",
+                    isOverflow
+                      ? "bg-gray-100 text-gray-400"
+                      : isHoliday
+                      ? "bg-rose-50 ring-1 ring-rose-200"
+                      : "bg-white",
                     !locked && hasSelection ? "cursor-pointer hover:ring-2 hover:ring-blue-300" : "",
                     locked && !isOverflow ? "opacity-60 pointer-events-none" : "",
                   ].join(" ")}
-                  style={{
-                    opacity: isOverflow ? 0.7 : locked ? 0.8 : 1,
-                    cursor: locked ? "default" : hasSelection ? "pointer" : "default",
-                  }}
                   onClick={() => !locked && setModalDay(dateStr)}
                   title={
                     isOverflow
                       ? undefined
                       : isHoliday
-                        ? "School holiday"
-                        : locked
-                          ? (isPast ? "Past day" : "Not in term")
-                          : hasSelection
-                            ? "Tap to view or edit order"
-                            : undefined
+                      ? "School holiday"
+                      : locked
+                      ? isPastDay
+                        ? "Past day"
+                        : "Not in term"
+                      : hasSelection
+                      ? "Tap to view or edit order"
+                      : undefined
                   }
                 >
-                  {/* Date number */}
                   <span className="text-xs">{format(date, "d")}</span>
 
-                  {/* Mobile (xs) indicator: green dot when there is any order */}
                   <div className="mt-auto mb-1 w-full sm:hidden">
-                    {hasSelection && (
-                      <span
-                        className="inline-block h-2 w-2 rounded-full bg-green-500"
-                        aria-label="Order placed"
-                        title="Order placed"
-                      />
-                    )}
+                    {hasSelection && <span className="inline-block h-2 w-2 rounded-full bg-green-500" />}
                   </div>
 
-                  {/* Desktop/tablet tags (hidden on small screens) */}
                   <div className="hidden sm:flex flex-col gap-1 mt-auto mb-1 w-full">
                     {mealGroups.map((group) => {
-                      const chosen = daySelections[group.id] || [];
+                      const chosen = daySelections[group.id]?.choiceIds || [];
                       if (!chosen.length) return null;
+
                       const names = chosen
                         .map((id) => group.choices.find((c) => c.id === id)?.name)
                         .filter(Boolean)
                         .join(", ");
+
                       return (
                         <span
                           key={group.id}
@@ -550,7 +696,7 @@ export default function PupilLunchOrdersPage() {
         <DayEditModal
           dateStr={modalDay}
           mealGroups={mealGroups}
-          selections={selections}
+          selections={selections as any}
           onSelect={(d, g, choices) => {
             if (!orderableDays.has(d)) return;
             handleSelect(d, g, choices);
@@ -558,6 +704,43 @@ export default function PupilLunchOrdersPage() {
           onClose={() => setModalDay(null)}
         />
       )}
+
+      {/* Guard: incomplete week + dirty */}
+      <AlertDialog open={guardOpen} onOpenChange={setGuardOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Complete week orders</AlertDialogTitle>
+            <AlertDialogDescription>
+              You have unsaved changes and the week is incomplete. Please complete the week’s orders or cancel your changes.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              onClick={() => {
+                // Stay on page
+                pendingNavRef.current = null;
+              }}
+            >
+              Complete week
+            </AlertDialogCancel>
+
+            <AlertDialogAction
+              onClick={() => {
+                // Cancel changes (revert) and proceed
+                setSelections(deepClone(lastLoadedSelectionsRef.current));
+                setDirty(false);
+                setGuardOpen(false);
+
+                const nav = pendingNavRef.current;
+                pendingNavRef.current = null;
+                nav?.();
+              }}
+            >
+              Cancel changes
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

@@ -8,14 +8,38 @@ function isAdmin(user: any) {
 
 export const GET = auth(async (req: Request) => {
   const { user } = (req as any).auth;
-  if (!user) {
-    return new Response("Unauthorized", { status: 401 });
-  }
+  if (!user) return new Response("Unauthorized", { status: 401 });
+
   const groups = await prisma.mealGroup.findMany({
-    include: { choices: true },
     orderBy: { name: "asc" },
+    select: {
+      id: true,
+      name: true,
+      maxSelections: true,
+      choices: {
+        where: { active: true }, // optional but recommended
+        orderBy: { name: "asc" },
+        select: {
+          id: true,
+          name: true,
+          ingredients: true, // extras list
+          imageUrl: true,
+
+          // nutrition fields
+          caloriesKcal: true,
+          proteinG: true,
+          carbsG: true,
+          sugarsG: true,
+          fatG: true,
+          saturatesG: true,
+          fibreG: true,
+          saltG: true,
+        },
+      },
+    },
   });
-  return new Response(JSON.stringify(groups), { status: 200 });
+
+  return Response.json(groups);
 });
 
 export const POST = auth(async (req: Request) => {
