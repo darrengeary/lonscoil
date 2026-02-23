@@ -103,7 +103,7 @@ export function UserAccountNav() {
                 onClick={(event) => {
                   event.preventDefault();
                   signOut({
-                    callbackUrl: `${window.location.origin}/`,
+                    callbackUrl: `${window.location.origin}/login`,
                   });
                 }}
               >
@@ -170,11 +170,11 @@ export function UserAccountNav() {
         <DropdownMenuItem
           className="cursor-pointer"
           onSelect={(event) => {
-            event.preventDefault();
-            signOut({
-              callbackUrl: `${window.location.origin}/`,
-            });
-          }}
+              event.preventDefault();
+              signOut({
+                callbackUrl: `${window.location.origin}/login`,
+              });
+            }}
         >
           <div className="flex items-center space-x-2.5">
             <LogOut className="size-4" />

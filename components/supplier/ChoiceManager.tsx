@@ -289,6 +289,25 @@ export default function ChoiceManager({ groupId, initialChoices, disabled = fals
     setAddSalt("");
   }
 
+    function LabeledInput({
+    label,
+    value,
+    onChange,
+    placeholder,
+  }: {
+    label: string;
+    value: string;
+    onChange: (v: string) => void;
+    placeholder?: string;
+  }) {
+    return (
+      <div className="space-y-1">
+        <div className="text-xs font-semibold text-gray-600">{label}</div>
+        <Input value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder ?? ""} />
+      </div>
+    );
+  }
+
   function closeAdd() {
     setAddOpen(false);
     setAddFile(null);
@@ -447,7 +466,7 @@ export default function ChoiceManager({ groupId, initialChoices, disabled = fals
 
       {/* EDIT MODAL */}
       <Dialog open={editOpen} onOpenChange={(v) => (v ? null : closeEdit())}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="sm:max-w-lg bg-white text-slate-900 shadow-xl rounded-2xl">
           <DialogHeader>
             <DialogTitle>Edit choice</DialogTitle>
             <DialogDescription>Update image, allergens, ingredients, availability, and nutrition.</DialogDescription>
@@ -648,15 +667,15 @@ export default function ChoiceManager({ groupId, initialChoices, disabled = fals
               {/* Nutrition */}
               <div className="space-y-2">
                 <div className="text-sm font-medium">Nutrition (per portion)</div>
-                <div className="grid grid-cols-2 gap-2">
-                  <Input placeholder="Calories (kcal)" value={editCalories} onChange={(e) => setEditCalories(e.target.value)} />
-                  <Input placeholder="Protein (g)" value={editProtein} onChange={(e) => setEditProtein(e.target.value)} />
-                  <Input placeholder="Carbs (g)" value={editCarbs} onChange={(e) => setEditCarbs(e.target.value)} />
-                  <Input placeholder="Sugars (g)" value={editSugars} onChange={(e) => setEditSugars(e.target.value)} />
-                  <Input placeholder="Fat (g)" value={editFat} onChange={(e) => setEditFat(e.target.value)} />
-                  <Input placeholder="Saturates (g)" value={editSaturates} onChange={(e) => setEditSaturates(e.target.value)} />
-                  <Input placeholder="Fibre (g)" value={editFibre} onChange={(e) => setEditFibre(e.target.value)} />
-                  <Input placeholder="Salt (g)" value={editSalt} onChange={(e) => setEditSalt(e.target.value)} />
+                <div className="grid grid-cols-2 gap-3">
+                  <LabeledInput label="Calories (kcal)" value={editCalories} onChange={setEditCalories} />
+                  <LabeledInput label="Protein (g)" value={editProtein} onChange={setEditProtein} />
+                  <LabeledInput label="Carbs (g)" value={editCarbs} onChange={setEditCarbs} />
+                  <LabeledInput label="Sugars (g)" value={editSugars} onChange={setEditSugars}  />
+                  <LabeledInput label="Fat (g)" value={editFat} onChange={setEditFat} />
+                  <LabeledInput label="Saturates (g)" value={editSaturates} onChange={setEditSaturates} />
+                  <LabeledInput label="Fibre (g)" value={editFibre} onChange={setEditFibre} />
+                  <LabeledInput label="Salt (g)" value={editSalt} onChange={setEditSalt} />
                 </div>
               </div>
             </div>
@@ -675,7 +694,7 @@ export default function ChoiceManager({ groupId, initialChoices, disabled = fals
 
       {/* ADD MODAL */}
       <Dialog open={addOpen} onOpenChange={(v) => (v ? null : closeAdd())}>
-        <DialogContent className="sm:max-w-lg">
+      <DialogContent className="sm:max-w-lg bg-white text-slate-900 shadow-xl rounded-2xl">
           <DialogHeader>
             <DialogTitle>Add choice</DialogTitle>
             <DialogDescription>Create a new choice with optional image, allergens, availability, and nutrition.</DialogDescription>
@@ -875,16 +894,16 @@ export default function ChoiceManager({ groupId, initialChoices, disabled = fals
             {/* Nutrition */}
             <div className="space-y-2">
               <div className="text-sm font-medium">Nutrition (per portion)</div>
-              <div className="grid grid-cols-2 gap-2">
-                <Input placeholder="Calories (kcal)" value={addCalories} onChange={(e) => setAddCalories(e.target.value)} />
-                <Input placeholder="Protein (g)" value={addProtein} onChange={(e) => setAddProtein(e.target.value)} />
-                <Input placeholder="Carbs (g)" value={addCarbs} onChange={(e) => setAddCarbs(e.target.value)} />
-                <Input placeholder="Sugars (g)" value={addSugars} onChange={(e) => setAddSugars(e.target.value)} />
-                <Input placeholder="Fat (g)" value={addFat} onChange={(e) => setAddFat(e.target.value)} />
-                <Input placeholder="Saturates (g)" value={addSaturates} onChange={(e) => setAddSaturates(e.target.value)} />
-                <Input placeholder="Fibre (g)" value={addFibre} onChange={(e) => setAddFibre(e.target.value)} />
-                <Input placeholder="Salt (g)" value={addSalt} onChange={(e) => setAddSalt(e.target.value)} />
-              </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <LabeledInput label="Calories (kcal)" value={addCalories} onChange={setAddCalories}  />
+                  <LabeledInput label="Protein (g)" value={addProtein} onChange={setAddProtein}  />
+                  <LabeledInput label="Carbs (g)" value={addCarbs} onChange={setAddCarbs}  />
+                  <LabeledInput label="Sugars (g)" value={addSugars} onChange={setAddSugars}  />
+                  <LabeledInput label="Fat (g)" value={addFat} onChange={setAddFat}  />
+                  <LabeledInput label="Saturates (g)" value={addSaturates} onChange={setAddSaturates}  />
+                  <LabeledInput label="Fibre (g)" value={addFibre} onChange={setAddFibre}  />
+                  <LabeledInput label="Salt (g)" value={addSalt} onChange={setAddSalt} />
+                </div>
             </div>
           </div>
 

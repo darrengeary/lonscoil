@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { format } from "date-fns";
+import { format, parseISO } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -14,7 +14,11 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { Calendar as CalendarIcon, Printer } from "lucide-react";
-import PrepSummaryTable, { PrepSummaryRow, ExtrasTotalRow } from "@/components/supplier/PrepSummaryTable";
+import PrepSummaryTable, {
+  PrepSummaryRow,
+  ExtrasTotalRow,
+  PrepSplitRow,
+} from "@/components/supplier/PrepSummaryTable";
 import { cn } from "@/lib/utils";
 import { DashboardHeader } from "@/components/dashboard/header";
 
@@ -28,7 +32,9 @@ function DatePicker({
   onChange: (value: string) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const selectedDate = value ? new Date(value) : undefined;
+
+  // FIX: avoid Date("YYYY-MM-DD") UTC parsing off-by-one
+  const selectedDate = value ? parseISO(value) : undefined;
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -73,19 +79,17 @@ export default function PrepListPage() {
   const [mealGroups, setMealGroups] = useState<MealGroup[]>([]);
   const [mealGroupId, setMealGroupId] = useState("all");
 
+  // grouped rows (meals)
   const [rows, setRows] = useState<PrepSummaryRow[]>([]);
+  // split rows (meals-by-combo)
+  const [splitRows, setSplitRows] = useState<PrepSplitRow[]>([]);
   const [extrasTotals, setExtrasTotals] = useState<ExtrasTotalRow[]>([]);
 
   const [splitByExtras, setSplitByExtras] = useState(false);
 
   const [printing, setPrinting] = useState(false);
-  const [previewing, setPreviewing] = useState(false);
 
-  // grid preview: 9 label image URLs
-  const [previewImages, setPreviewImages] = useState<string[]>([]);
-  const [lastJobId, setLastJobId] = useState<string | null>(null);
-
-  // ---- data fetch ----
+  // ---- initial data fetch (schools + meal groups) ----
   useEffect(() => {
     fetch("/api/schools")
       .then((res) => res.json())
@@ -103,6 +107,7 @@ export default function PrepListPage() {
       .catch(() => setMealGroups([{ id: "all", name: "All Meal Groups" }]));
   }, []);
 
+  // ---- classrooms fetch (depends on schoolId) ----
   useEffect(() => {
     if (schoolId === "all") {
       setClassrooms([]);
@@ -118,11 +123,15 @@ export default function PrepListPage() {
     setClassroomId("all");
   }, [schoolId]);
 
+  // ---- main data fetch ----
   const fetchData = () => {
     let url = `/api/kitchen-prep?date=${date}`;
     if (schoolId && schoolId !== "all") url += `&schoolId=${schoolId}`;
     if (classroomId && classroomId !== "all") url += `&classroomId=${classroomId}`;
     if (mealGroupId && mealGroupId !== "all") url += `&mealGroupId=${mealGroupId}`;
+
+    // IMPORTANT: only request split data when needed
+    if (splitByExtras) url += `&splitByExtras=1`;
 
     fetch(url)
       .then((res) => res.json())
@@ -131,15 +140,22 @@ export default function PrepListPage() {
           (a: any, b: any) => (b.count ?? 0) - (a.count ?? 0)
         );
         setRows(meals);
+
+        const splits = [...(data.splitMeals ?? [])].sort(
+          (a: any, b: any) => (b.count ?? 0) - (a.count ?? 0)
+        );
+        setSplitRows(splits);
+
         setExtrasTotals(data.extrasTotals ?? []);
       })
       .catch(() => {
         setRows([]);
+        setSplitRows([]);
         setExtrasTotals([]);
       });
   };
 
-  useEffect(fetchData, [date, schoolId, classroomId, mealGroupId]);
+  useEffect(fetchData, [date, schoolId, classroomId, mealGroupId, splitByExtras]);
 
   // ---- actions ----
   const handlePrint = () => window.print();
@@ -148,69 +164,85 @@ export default function PrepListPage() {
     let url = `/api/print-jobs?date=${date}`;
     if (schoolId && schoolId !== "all") url += `&schoolId=${schoolId}`;
     if (classroomId && classroomId !== "all") url += `&classroomId=${classroomId}`;
+    if (mealGroupId && mealGroupId !== "all") url += `&mealGroupId=${mealGroupId}`;
+
+    // Optional: if backend supports generating different label sets by split mode
+    url += `&splitByExtras=${splitByExtras ? "1" : "0"}`;
 
     const res = await fetch(url, { method: "POST" });
     if (!res.ok) throw new Error(await res.text());
-    const job = (await res.json()) as { id: string; totalLabels: number };
-    setLastJobId(job.id);
-    return job;
+    return (await res.json()) as { id: string; totalLabels: number };
   }
 
-  async function handlePrintStickersTest() {
-    try {
-      setPrinting(true);
-      const job = await createPrintJob();
+async function handlePrintStickersAll() {
+  try {
+    setPrinting(true);
 
-      const zplRes = await fetch(`/api/print-jobs/${job.id}/zpl?from=1&limit=4`);
-      if (!zplRes.ok) throw new Error(await zplRes.text());
-      const zpl = await zplRes.text();
+    const job = await createPrintJob();
 
-      const blob = new Blob([zpl], { type: "text/plain;charset=utf-8" });
-      const fileUrl = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = fileUrl;
-      a.download = `printjob_${job.id}_test_4labels.zpl`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(fileUrl);
-    } catch (e: any) {
-      console.error(e);
-      alert(e?.message ?? "Sticker test print failed");
-    } finally {
-      setPrinting(false);
+    if (!job.totalLabels || job.totalLabels <= 0) {
+      alert("No labels to print for this date/filter.");
+      return;
     }
-  }
 
-  // Preview 9 labels as 3x3 grid (3 wide)
-  // This calls /api/print-jobs/:id/preview?from=N&limit=1&dpi=203 for each label.
-  async function handlePreviewStickers() {
-    try {
-      setPreviewing(true);
-      setPreviewImages([]);
+    const res = await fetch(`/api/print-jobs/${job.id}/zpl?from=1&limit=${job.totalLabels}`, {
+      method: "GET",
+      cache: "no-store",
+    });
 
-      const job = await createPrintJob();
-
-      const dpi = 203;
-      const count = Math.min(9, job.totalLabels);
-
-      const urls = Array.from({ length: count }, (_, i) => {
-        const seq = i + 1;
-        // IMPORTANT: your preview endpoint must return ONE label PNG for limit=1
-        return `/api/print-jobs/${job.id}/preview?from=${seq}&limit=1&dpi=${dpi}`;
-      });
-
-      setPreviewImages(urls);
-    } catch (e: any) {
-      console.error(e);
-      alert(e?.message ?? "Preview failed");
-    } finally {
-      setPreviewing(false);
+    // If auth redirects, Next often returns HTML.
+    const contentType = res.headers.get("content-type") ?? "";
+    if (!res.ok) {
+      const text = await res.text();
+      console.error("ZPL fetch failed", res.status, text);
+      alert(`ZPL fetch failed: ${res.status}`);
+      return;
     }
-  }
 
-  const totalMeals = rows.reduce((sum, row) => sum + (row.count ?? 0), 0);
-  const uniqueChoices = rows.length;
+    const zpl = await res.text();
+
+    // Hard sanity checks
+    if (!zpl.trim()) {
+      console.error("ZPL is empty", { jobId: job.id, totalLabels: job.totalLabels });
+      alert("ZPL is empty (no items or server returned empty). Check console.");
+      return;
+    }
+    if (contentType.includes("text/html")) {
+      console.error("Got HTML instead of ZPL (likely auth redirect)", zpl.slice(0, 300));
+      alert("Got HTML instead of ZPL (likely auth issue). Check console.");
+      return;
+    }
+
+    const blob = new Blob([zpl], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `printjob_${job.id}_ALL_${job.totalLabels}labels.zpl`;
+    a.style.display = "none";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+
+    // IMPORTANT: revoke later (Chrome needs time)
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+  } catch (e: any) {
+    console.error(e);
+    alert(e?.message ?? "Sticker print failed");
+  } finally {
+    setPrinting(false);
+  }
+}
+
+  // Totals shown in pills:
+  // - grouped mode: sum rows.count
+  // - split mode: sum splitRows.count (should match grouped totals now)
+  const totalMeals =
+    splitByExtras
+      ? splitRows.reduce((sum, r) => sum + (r.count ?? 0), 0)
+      : rows.reduce((sum, r) => sum + (r.count ?? 0), 0);
+
+  const uniqueChoices = splitByExtras ? splitRows.length : rows.length;
 
   return (
     <div className="bg-[#F4F7FA] p-6 space-y-6">
@@ -285,50 +317,18 @@ export default function PrepListPage() {
           </div>
 
           <Button type="button" onClick={handlePrint} className="gap-2">
-            <Printer size={18} /> Print page
+            <Printer size={18} /> Print List
           </Button>
 
           <Button
             type="button"
-            variant="secondary"
-            onClick={handlePrintStickersTest}
+            onClick={handlePrintStickersAll}
             disabled={printing}
+            className="gap-2"
           >
-            {printing ? "Preparing…" : "Print stickers (test 4)"}
-          </Button>
-
-          <Button
-            type="button"
-            variant="secondary"
-            onClick={handlePreviewStickers}
-            disabled={previewing}
-          >
-            {previewing ? "Rendering…" : "Preview stickers (3×3)"}
+            <Printer size={18} /> {printing ? " " + "Preparing…" : " " + " Print Stickers"}
           </Button>
         </div>
-
-        {/* Preview area (NOT inside filter bar) */}
-        {previewImages.length > 0 && (
-          <div className="bg-white rounded-2xl p-4 shadow-sm mb-4">
-            <div className="flex items-center justify-between mb-3">
-              <div className="font-semibold text-[#27364B]">
-                Sticker preview (first {previewImages.length})
-              </div>
-              {lastJobId && (
-                <div className="text-xs text-muted-foreground">Job: {lastJobId}</div>
-              )}
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {previewImages.map((src, i) => (
-                <div key={i} className="rounded-xl border bg-[#F4F7FA] p-2">
-                  <div className="text-xs text-muted-foreground mb-1">Label {i + 1}</div>
-                  <img src={src} className="w-full h-auto block" />
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
 
         {/* Pills */}
         <div className="flex flex-wrap gap-3 mb-2">
@@ -336,19 +336,20 @@ export default function PrepListPage() {
             Total Meals: <span className="ml-2 text-[#27364B] font-bold">{totalMeals}</span>
           </div>
           <div className="px-4 py-2 rounded-full bg-[#E7F1FA] text-[#4C9EEB] font-semibold text-base flex items-center">
-            Unique Choices: <span className="ml-2 text-[#27364B] font-bold">{uniqueChoices}</span>
+            Unique Choices:{" "}
+            <span className="ml-2 text-[#27364B] font-bold">{uniqueChoices}</span>
           </div>
         </div>
 
         <PrepSummaryTable
           rows={rows}
+          splitRows={splitRows}
           extrasTotals={extrasTotals}
           mode={splitByExtras ? "split" : "grouped"}
-          splitIncludeBase={true}
         />
       </div>
 
-      {/* PRINT ONLY (keep yours) */}
+      {/* PRINT ONLY */}
       <div className="hidden print:block w-full mt-6">
         <div className="text-center mb-4">
           <img src="/lunchlog.png" alt="LunchLog" style={{ height: 170, margin: "0 auto" }} />
@@ -379,9 +380,13 @@ export default function PrepListPage() {
             </tr>
           </thead>
           <tbody>
-            {rows.map((row, i) => (
+            {(splitByExtras ? splitRows : rows).map((row: any, i: number) => (
               <tr key={i}>
-                <td style={{ border: "1px solid #000", padding: 8 }}>{row.choice}</td>
+                <td style={{ border: "1px solid #000", padding: 8 }}>
+                  {"extrasSig" in row && row.extrasSig
+                    ? `${row.choice} — ${row.extrasSig}`
+                    : row.choice}
+                </td>
                 <td style={{ border: "1px solid #000", padding: 8 }}>{row.group}</td>
                 <td style={{ border: "1px solid #000", padding: 8, textAlign: "right" }}>
                   {row.count}

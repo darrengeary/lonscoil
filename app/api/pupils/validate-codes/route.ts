@@ -4,7 +4,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/db";
 
 const bodySchema = z.object({
-  codes: z.array(z.string()).min(1).max(5),      // just “string” not .uuid()
+  codes: z.array(z.string()).min(1).max(5),
 });
 
 export async function POST(req: Request) {
@@ -14,12 +14,16 @@ export async function POST(req: Request) {
   }
 
   const { codes } = parsed.data;
+
   const count = await prisma.pupil.count({
     where: { id: { in: codes }, status: "UNREGISTERED" },
   });
 
-  return NextResponse.json({
-    valid: count === codes.length,
-    error: count === codes.length ? undefined : "Invalid or already claimed",
-  }, { status: 200 });
+  return NextResponse.json(
+    {
+      valid: count === codes.length,
+      error: count === codes.length ? undefined : "Invalid or already claimed",
+    },
+    { status: 200 }
+  );
 }

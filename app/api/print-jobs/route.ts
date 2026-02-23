@@ -1,7 +1,7 @@
 // app/api/print-jobs/route.ts
 import { auth } from "@/auth";
 import { prisma } from "@/lib/db";
-import { startOfDay, endOfDay } from "date-fns";
+import { startOfDay, endOfDay, parseISO } from "date-fns";
 
 type AnyUser = {
   id?: string;
@@ -15,13 +15,6 @@ function normalizeExtras(input: unknown): string[] {
     .map((x) => (typeof x === "string" ? x.trim() : ""))
     .filter(Boolean);
   return Array.from(new Set(cleaned)).sort((a, b) => a.localeCompare(b));
-}
-
-function isLunch(groupName: string | null | undefined) {
-  return (groupName ?? "").trim().toLowerCase() === "lunch";
-}
-function isSnack(groupName: string | null | undefined) {
-  return (groupName ?? "").trim().toLowerCase() === "snack";
 }
 
 export const POST = auth(async (req) => {
@@ -44,7 +37,8 @@ export const POST = auth(async (req) => {
     return new Response("Unauthorized", { status: 401 });
   }
 
-  const day = new Date(dateStr);
+  // FIX: avoid UTC parsing bug for YYYY-MM-DD
+  const day = parseISO(dateStr);
 
   // Orders for that day + filters
   const orderWhere: any = {
@@ -57,7 +51,7 @@ export const POST = auth(async (req) => {
     orderWhere.pupil = { classroom: { schoolId } };
   }
 
-  // Pull orders with pupil + items + choice group name
+  // Pull orders with pupil + items + choice + allergens
   const orders = await prisma.lunchOrder.findMany({
     where: orderWhere,
     select: {
@@ -71,29 +65,38 @@ export const POST = auth(async (req) => {
       items: {
         select: {
           selectedIngredients: true,
-          choice: { select: { name: true, group: { select: { name: true } } } },
+          choiceId: true,
+          choice: {
+            select: {
+              name: true,
+              group: { select: { name: true } }, // you said group not needed on sticker, but OK to store internally
+              allergens: { select: { name: true } }, // ✅ needed for label
+            },
+          },
         },
       },
     },
     orderBy: { pupil: { name: "asc" } },
   });
 
-  // Resolve schoolId if caller is ADMIN and passed "all" (null) and we still want to store schoolId on job:
-  // - If filtering by classroom: infer via first order's classroom
-  // - Else if filtering by school: it's already set
-  // - Else: leave null (multi-school job)
+  // Infer schoolId for job record (single-school job when possible)
   const inferredSchoolId =
     schoolId ??
-    (classroomId && classroomId !== "all" ? orders[0]?.pupil?.classroom?.schoolId ?? null : null);
+    (classroomId && classroomId !== "all"
+      ? orders[0]?.pupil?.classroom?.schoolId ?? null
+      : null);
 
-  // Build EXACTLY 2 labels per pupil: LUNCH + SNACK (even if missing)
+  // Build ONE label per ORDER ITEM (choice) - skip missing automatically because only actual items exist
   const labelRows: Array<{
     pupilId: string;
     pupilName: string;
     classroom: string;
-    mealType: "LUNCH" | "SNACK";
-    choice: string;
+    choiceId: string;
+    choiceName: string;
     extras: string[];
+    allergens: string[];
+    // store group internally if you want it for reporting/debugging, but you won't print it
+    mealGroupName: string;
   }> = [];
 
   for (const o of orders) {
@@ -101,26 +104,29 @@ export const POST = auth(async (req) => {
     const pupilName = o.pupil.name;
     const classroomName = o.pupil.classroom?.name ?? "Unknown";
 
-    const lunchItem = o.items.find((it) => isLunch(it.choice.group?.name));
-    const snackItem = o.items.find((it) => isSnack(it.choice.group?.name));
-
-    labelRows.push({
-      pupilId,
-      pupilName,
-      classroom: classroomName,
-      mealType: "LUNCH",
-      choice: lunchItem?.choice?.name ?? "NO LUNCH SELECTED",
-      extras: normalizeExtras(lunchItem?.selectedIngredients),
+    // Stable ordering for printing: by group then choice (or change to choice only if you prefer)
+    const itemsSorted = [...o.items].sort((a, b) => {
+      const ga = (a.choice.group?.name ?? "").toLowerCase();
+      const gb = (b.choice.group?.name ?? "").toLowerCase();
+      if (ga !== gb) return ga.localeCompare(gb);
+      return (a.choice.name ?? "").localeCompare(b.choice.name ?? "");
     });
 
-    labelRows.push({
-      pupilId,
-      pupilName,
-      classroom: classroomName,
-      mealType: "SNACK",
-      choice: snackItem?.choice?.name ?? "NO SNACK SELECTED",
-      extras: normalizeExtras(snackItem?.selectedIngredients),
-    });
+    for (const it of itemsSorted) {
+      // Skip weird broken records
+      if (!it.choiceId) continue;
+
+      labelRows.push({
+        pupilId,
+        pupilName,
+        classroom: classroomName,
+        choiceId: it.choiceId,
+        choiceName: it.choice.name ?? "Unknown",
+        extras: normalizeExtras(it.selectedIngredients),
+        allergens: (it.choice.allergens ?? []).map((a) => a.name).sort((a, b) => a.localeCompare(b)),
+        mealGroupName: it.choice.group?.name ?? "Meal",
+      });
+    }
   }
 
   // Create job + items (seq = 1..N)
@@ -143,12 +149,19 @@ export const POST = auth(async (req) => {
         data: labelRows.map((r, idx) => ({
           jobId: created.id,
           seq: idx + 1,
+
           pupilId: r.pupilId,
           pupilName: r.pupilName,
           classroom: r.classroom,
-          mealType: r.mealType,
-          choice: r.choice,
+
+          // Keep storing group name internally if you ever want it,
+          // even though you won't print it on sticker.
+          mealType: r.mealGroupName,
+
+          choiceId: r.choiceId,     // ✅ requires schema change
+          choice: r.choiceName,
           extras: r.extras,
+          allergens: r.allergens,   // ✅ requires schema change
         })),
       });
     }

@@ -309,6 +309,10 @@ model PrintJobItem {
   jobId       String
   job         PrintJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
 
+  schoolName String
+  choiceId   String?
+  allergens  String[] @default([])
+  
   seq         Int
 
   pupilId     String

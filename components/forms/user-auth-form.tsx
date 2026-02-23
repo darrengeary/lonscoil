@@ -16,43 +16,52 @@ import { toast } from "sonner";
 import { Icons } from "@/components/shared/icons";
 
 interface UserAuthFormProps extends React.HTMLAttributes<HTMLDivElement> {
-  type?: string;
+  type?: string; // keep if you use it elsewhere
 }
 
 type FormData = z.infer<typeof userAuthSchema>;
 
 export function UserAuthForm({ className, type, ...props }: UserAuthFormProps) {
+  const searchParams = useSearchParams();
+  const [isLoading, setIsLoading] = React.useState(false);
+
   const {
     register,
     handleSubmit,
     formState: { errors },
   } = useForm<FormData>({
     resolver: zodResolver(userAuthSchema),
+    defaultValues: { email: "", password: "" },
   });
-  const [isLoading, setIsLoading] = React.useState<boolean>(false);
-  const [isGoogleLoading, setIsGoogleLoading] = React.useState<boolean>(false);
-  const searchParams = useSearchParams();
 
   async function onSubmit(data: FormData) {
     setIsLoading(true);
 
-    const signInResult = await signIn("resend", {
-      email: data.email.toLowerCase(),
-      redirect: false,
-      callbackUrl: searchParams?.get("from") || "/parent/pupils",
-    });
+    try {
+      const callbackUrl = searchParams?.get("from") || "/parent/pupils";
 
-    setIsLoading(false);
-
-    if (!signInResult?.ok) {
-      return toast.error("Something went wrong.", {
-        description: "Your sign in request failed. Please try again."
+      const res = await signIn("credentials", {
+        email: data.email.toLowerCase().trim(),
+        password: data.password,
+        redirect: false,
+        callbackUrl,
       });
-    }
 
-    return toast.success("Check your email", {
-      description: "We sent you a login link. Be sure to check your spam too.",
-    });
+      if (res?.error) {
+        // With NextAuth Credentials, this is typically "CredentialsSignin"
+        // We show a useful message (could be wrong password OR not verified).
+        toast.error("Login failed", {
+          description:
+            "Check your email/password. If you just registered, verify your email first.",
+        });
+        return;
+      }
+
+      // NextAuth returns a URL to redirect to
+      window.location.href = res?.url || callbackUrl;
+    } finally {
+      setIsLoading(false);
+    }
   }
 
   return (
@@ -70,49 +79,42 @@ export function UserAuthForm({ className, type, ...props }: UserAuthFormProps) {
               autoCapitalize="none"
               autoComplete="email"
               autoCorrect="off"
-              disabled={isLoading || isGoogleLoading}
+              disabled={isLoading}
               {...register("email")}
             />
             {errors?.email && (
+              <p className="px-1 text-xs text-red-600">{errors.email.message}</p>
+            )}
+          </div>
+
+          <div className="grid gap-1">
+            <Label className="sr-only" htmlFor="password">
+              Password
+            </Label>
+            <Input
+              id="password"
+              placeholder="Password"
+              type="password"
+              autoComplete="current-password"
+              disabled={isLoading}
+              {...register("password")}
+            />
+            {errors?.password && (
               <p className="px-1 text-xs text-red-600">
-                {errors.email.message}
+                {errors.password.message}
               </p>
             )}
           </div>
+
           <button className={cn(buttonVariants())} disabled={isLoading}>
-            {isLoading && (
-              <Icons.spinner className="mr-2 size-4 animate-spin" />
-            )}
-            {type === "register" ? "Sign Up with Email" : "Sign In with Email"}
+            {isLoading && <Icons.spinner className="mr-2 size-4 animate-spin" />}
+            {type === "register" ? "Continue" : "Sign In"}
           </button>
         </div>
       </form>
-      <div className="relative">
-        <div className="absolute inset-0 flex items-center">
-          <span className="w-full border-t" />
-        </div>
-        <div className="relative flex justify-center text-xs uppercase">
-          <span className="bg-background px-2 text-muted-foreground">
-            Or continue with
-          </span>
-        </div>
-      </div>
-      <button
-        type="button"
-        className={cn(buttonVariants({ variant: "outline" }))}
-        onClick={() => {
-          setIsGoogleLoading(true);
-          signIn("google");
-        }}
-        disabled={isLoading || isGoogleLoading}
-      >
-        {isGoogleLoading ? (
-          <Icons.spinner className="mr-2 size-4 animate-spin" />
-        ) : (
-          <Icons.google className="mr-2 size-4" />
-        )}{" "}
-        Google
-      </button>
+
+      {/* Remove 3rd party UI for now */}
+      {/* If you want a “Forgot password” later, add it here */}
     </div>
   );
 }

@@ -1,4 +1,4 @@
-// app/(auth)/register/RegisterForm.tsx
+// app/(auth)/register/RegisterForm.tsx  (FULL FILE - fixed duplicate logic + sends verify link)
 "use client";
 
 import React, { useState } from "react";
@@ -28,6 +28,7 @@ type CodeRow = {
 export default function RegisterForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [codes, setCodes] = useState<CodeRow[]>([
@@ -35,58 +36,53 @@ export default function RegisterForm() {
   ]);
   const [loading, setLoading] = useState(false);
 
-  function onCodeChange(id: string, value: string) {
-    setCodes(prev =>
-      prev.map(r => (r.id === id ? { ...r, value, status: "idle" } : r))
+type Status = CodeRow["status"];
+
+function onCodeChange(id: string, value: string) {
+  setCodes(prev => {
+    const next: CodeRow[] = prev.map(r =>
+      r.id === id ? { ...r, value, status: "idle" as Status } : r
     );
-    setCodes(prev => {
-      const counts = prev.reduce<Record<string, number>>((acc, r) => {
-        const key = r.value.trim().toLowerCase();
-        if (key) acc[key] = (acc[key] || 0) + 1;
-        return acc;
-      }, {});
-      return prev.map(r => {
-        const key = r.value.trim().toLowerCase();
-        return key && counts[key] > 1
-          ? { ...r, status: "invalid" }
-          : r;
-      });
+
+    const counts = next.reduce<Record<string, number>>((acc, r) => {
+      const key = r.value.trim().toLowerCase();
+      if (key) acc[key] = (acc[key] || 0) + 1;
+      return acc;
+    }, {});
+
+    return next.map(r => {
+      const key = r.value.trim().toLowerCase();
+      return key && counts[key] > 1
+        ? ({ ...r, status: "invalid" as Status } satisfies CodeRow)
+        : r;
     });
-  }
+  });
+}
 
   async function validateCode(row: CodeRow) {
-    if (!row.value.trim() || row.status === "invalid") return;
-    setCodes(prev =>
-      prev.map(r => (r.id === row.id ? { ...r, status: "checking" } : r))
-    );
+    const code = row.value.trim();
+    if (!code || row.status === "invalid") return;
+
+    setCodes(prev => prev.map(r => (r.id === row.id ? { ...r, status: "checking" } : r)));
+
     try {
       const res = await fetch("/api/pupils/validate-codes", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ codes: [row.value.trim()] }),
+        body: JSON.stringify({ codes: [code] }),
       });
+
       const { valid } = await res.json();
       setCodes(prev =>
-        prev.map(r =>
-          r.id === row.id
-            ? { ...r, status: valid ? "valid" : "invalid" }
-            : r
-        )
+        prev.map(r => (r.id === row.id ? { ...r, status: valid ? "valid" : "invalid" } : r))
       );
     } catch {
-      setCodes(prev =>
-        prev.map(r =>
-          r.id === row.id ? { ...r, status: "invalid" } : r
-        )
-      );
+      setCodes(prev => prev.map(r => (r.id === row.id ? { ...r, status: "invalid" } : r)));
     }
   }
 
   function addRow() {
-    setCodes(prev => [
-      ...prev,
-      { id: crypto.randomUUID(), value: "", status: "idle" },
-    ]);
+    setCodes(prev => [...prev, { id: crypto.randomUUID(), value: "", status: "idle" }]);
   }
 
   function deleteRow(id: string) {
@@ -95,50 +91,50 @@ export default function RegisterForm() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const validCount = codes.filter(r => r.status === "valid").length;
-    if (!email || password.length < 8 || validCount < 1) {
+
+    const cleanEmail = email.toLowerCase().trim();
+    const validCodes = codes.filter(r => r.status === "valid").map(r => r.value.trim());
+
+    if (!cleanEmail || password.length < 8 || validCodes.length < 1) {
       toast({
-        title:
-          "Please enter an email, 8+ char password, and confirm at least one code",
+        title: "Please enter an email, 8+ char password, and confirm at least one code",
         variant: "destructive",
       });
       return;
     }
-    setLoading(true);
 
+    setLoading(true);
     try {
       // 1) Create user + claim pupils
       const regRes = await fetch("/api/auth/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          email,
+          email: cleanEmail,
           password,
-          codes: codes
-            .filter(r => r.status === "valid")
-            .map(r => r.value.trim()),
+          codes: validCodes,
         }),
       });
+
       const regJson = await regRes.json();
-      if (!regRes.ok) {
-        throw new Error(regJson.error || "Registration failed");
-      }
+      if (!regRes.ok) throw new Error(regJson.error || "Registration failed");
 
-      // 2) Send the magic link (provider ID "resend"), pointing at /dashboard
+      // 2) Send verification magic link (verification-only enforced server-side)
+      const callbackUrl =
+        searchParams?.get("from") || `${window.location.origin}/login?verified=1`;
+
       const signInRes = await signIn("resend", {
-        email: email.toLowerCase(),
+        email: cleanEmail,
         redirect: false,
-        callbackUrl:
-          searchParams?.get("from") || `${window.location.origin}/dashboard`,
+        callbackUrl,
       });
-      if (signInRes?.error) {
-        throw new Error(signInRes.error);
-      }
 
-      // 3) Show your “Check your email” page
+      if (signInRes?.error) throw new Error(signInRes.error);
+
+      // 3) Show "check your email"
       router.push("/register/verify-request");
     } catch (err: any) {
-      toast({ title: err.message, variant: "destructive" });
+      toast({ title: err?.message || "Something went wrong", variant: "destructive" });
     } finally {
       setLoading(false);
     }
@@ -148,7 +144,7 @@ export default function RegisterForm() {
     email.trim().length > 0 &&
     password.length >= 8 &&
     codes.some(r => r.status === "valid") &&
-    !codes.some(r => r.status === "checking" || r.status === "invalid");
+    !codes.some(r => r.status === "checking");
 
   return (
     <div className="container flex h-screen w-screen flex-col items-center justify-center">
@@ -167,9 +163,7 @@ export default function RegisterForm() {
         className="mx-auto flex w-full flex-col justify-center space-y-6 sm:w-[400px] p-6"
       >
         <div className="flex flex-col space-y-2 text-center">
-          <h1 className="text-2xl font-semibold tracking-tight">
-            Register
-          </h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Register</h1>
           <p className="text-sm text-muted-foreground">
             Enter your email, choose a password, and at least one pupil code.
           </p>
@@ -187,9 +181,7 @@ export default function RegisterForm() {
         </div>
 
         <div className="space-y-1">
-          <label className="block text-sm font-medium">
-            Password (8+ characters)
-          </label>
+          <label className="block text-sm font-medium">Password (8+ characters)</label>
           <Input
             type="password"
             value={password}
@@ -201,6 +193,7 @@ export default function RegisterForm() {
 
         <div className="space-y-2">
           <label className="block text-sm font-medium">Pupil Codes</label>
+
           {codes.map(row => (
             <div key={row.id} className="flex items-center gap-2">
               <Input
@@ -210,7 +203,9 @@ export default function RegisterForm() {
                 className="flex-1"
                 required
               />
+
               <Button
+                type="button"
                 variant="outline"
                 size="icon"
                 onClick={() => validateCode(row)}
@@ -226,31 +221,19 @@ export default function RegisterForm() {
                   <SearchIcon className="size-5" />
                 )}
               </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => deleteRow(row.id)}
-              >
+
+              <Button type="button" variant="ghost" size="icon" onClick={() => deleteRow(row.id)}>
                 <TrashIcon className="size-5" />
               </Button>
             </div>
           ))}
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={addRow}
-            className="w-full"
-          >
+
+          <Button type="button" variant="outline" size="sm" onClick={addRow} className="w-full">
             + Add Another Code
           </Button>
         </div>
 
-        <Button
-          type="submit"
-          className="w-full"
-          disabled={!canContinue || loading}
-        >
+        <Button type="submit" className="w-full" disabled={!canContinue || loading}>
           {loading ? "Processing…" : "Continue"}
         </Button>
 

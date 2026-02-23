@@ -73,7 +73,7 @@ export default function SchoolAdminSchedulingPage() {
 
   useEffect(() => {
     if (schoolId) {
-      fetch(`/api/schedule?schoolId=${schoolId}`)
+      fetch(`/api/schedule`)
         .then((r) => r.json())
         .then((data) => setSchedules(data.error ? [] : data));
     }

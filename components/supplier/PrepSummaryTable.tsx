@@ -7,14 +7,19 @@ export interface PrepSummaryRow {
   extras?: { name: string; qty: number }[];
 }
 
+export interface PrepSplitRow {
+  group: string;
+  choice: string;
+  extrasSig: string; // "No extras" or "Cheese + Tomato"
+  count: number;
+}
+
 export interface ExtrasTotalRow {
   name: string;
   qty: number;
 }
 
 export type PrepViewMode = "grouped" | "split" | "extras";
-
-
 
 function hashString(s: string) {
   let h = 0;
@@ -40,7 +45,6 @@ function Tag({ name, qty }: { name: string; qty?: number }) {
   return (
     <span
       className={[
-        // key bit: inline-flex + flex-wrap container will wrap to next line when full
         "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-semibold whitespace-nowrap",
         tagClass(name),
       ].join(" ")}
@@ -86,43 +90,6 @@ function TagsCondensed({
   );
 }
 
-type SplitLine = {
-  kind: "base" | "extra";
-  group: string;
-  label: string;
-  count: number;
-};
-
-// Split mode lines:
-// - base line: choice count
-// - extra line: “choice + extraName” count=extra qty
-function buildSplitLines(rows: PrepSummaryRow[], includeBase: boolean): SplitLine[] {
-  const out: SplitLine[] = [];
-
-  for (const r of rows) {
-    if (includeBase) {
-      out.push({
-        kind: "base",
-        group: r.group,
-        label: r.choice,
-        count: r.count,
-      });
-    }
-
-    for (const ex of r.extras ?? []) {
-      out.push({
-        kind: "extra",
-        group: r.group,
-        label: `${r.choice} + ${ex.name}`,
-        count: ex.qty,
-      });
-    }
-  }
-
-  out.sort((a, b) => (b.count ?? 0) - (a.count ?? 0) || a.label.localeCompare(b.label));
-  return out;
-}
-
 function ExtrasTotalsTable({ rows }: { rows: ExtrasTotalRow[] }) {
   if (!rows || rows.length === 0) {
     return <div className="text-center text-muted-foreground py-8">No extras selected.</div>;
@@ -160,14 +127,14 @@ function ExtrasTotalsTable({ rows }: { rows: ExtrasTotalRow[] }) {
 
 export default function PrepSummaryTable({
   rows = [],
+  splitRows = [],
   extrasTotals = [],
   mode = "grouped",
-  splitIncludeBase = true,
 }: {
   rows?: PrepSummaryRow[];
+  splitRows?: PrepSplitRow[];
   extrasTotals?: ExtrasTotalRow[];
   mode?: PrepViewMode;
-  splitIncludeBase?: boolean;
 }) {
   // EXTRAS ONLY mode
   if (mode === "extras") {
@@ -181,8 +148,8 @@ export default function PrepSummaryTable({
     );
   }
 
-  const splitLines = mode === "split" ? buildSplitLines(rows ?? [], splitIncludeBase) : [];
-  const hasData = (mode === "split" ? splitLines.length : rows?.length) > 0;
+  const hasData =
+    mode === "split" ? (splitRows?.length ?? 0) > 0 : (rows?.length ?? 0) > 0;
 
   return (
     <>
@@ -193,18 +160,20 @@ export default function PrepSummaryTable({
             No data found for this date/filter.
           </div>
         ) : mode === "split" ? (
-          splitLines.map((r, i) => (
+          splitRows.map((r, i) => (
             <div
               key={i}
               className={[
                 "bg-white rounded-2xl shadow-sm p-4 flex flex-col gap-2",
-                r.kind === "extra" ? "border-l-4 border-gray-200" : "",
+                r.extrasSig !== "No extras" ? "border-l-4 border-gray-200" : "",
               ].join(" ")}
             >
               <div className="flex items-center gap-2 flex-wrap">
-                <span className="font-bold text-[#27364B] break-words">{r.label}</span>
+                <span className="font-bold text-[#27364B] break-words">
+                  {r.choice}
+                  {r.extrasSig && ` — ${r.extrasSig}`}
+                </span>
                 <span className="text-xs text-gray-500 font-medium break-words">{r.group}</span>
-                {/* NO TAGS IN SPLIT MODE */}
               </div>
 
               <div className="flex justify-end">
@@ -259,17 +228,21 @@ export default function PrepSummaryTable({
                 </td>
               </tr>
             ) : mode === "split" ? (
-              splitLines.map((r, i) => (
+              splitRows.map((r, i) => (
                 <tr
                   key={i}
                   className={[
                     "transition-colors align-top",
-                    r.kind === "extra" ? "bg-gray-50 hover:bg-gray-100" : "bg-white hover:bg-[#E7F1FA]",
+                    r.extrasSig !== "No extras"
+                      ? "bg-gray-50 hover:bg-gray-100"
+                      : "bg-white hover:bg-[#E7F1FA]",
                   ].join(" ")}
                 >
                   <td className="py-3 px-4 text-[#27364B] font-medium break-words">
-                    {/* NO TAGS IN SPLIT MODE */}
-                    <span>{r.label}</span>
+                    <span>
+                      {r.choice}
+                      {r.extrasSig && ` — ${r.extrasSig}`}
+                    </span>
                   </td>
 
                   <td className="py-3 px-4 text-[#27364B] font-medium break-words">{r.group}</td>
