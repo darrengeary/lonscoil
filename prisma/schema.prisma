@@ -24,6 +24,14 @@ enum ScheduleType {
   HOLIDAY
 }
 
+enum PrintJobStatus {
+  CREATED
+  PRINTING
+  PAUSED
+  COMPLETED
+  FAILED
+}
+
 /// ------------------------------------------------------
 /// Auth Models
 /// ------------------------------------------------------
@@ -118,6 +126,8 @@ model School {
 
   classrooms Classroom[]
   schedules  Schedule[]
+
+  menuLinks MenuSchool[]
 }
 
 /// ------------------------------------------------------
@@ -155,8 +165,14 @@ model Pupil {
 
   orders LunchOrder[]
 
+  // Menu variant per pupil (diet menu)
+  menuId String?
+  menu   Menu?   @relation(fields: [menuId], references: [id], onDelete: SetNull)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
+
+  @@index([menuId])
 }
 
 /// ------------------------------------------------------
@@ -168,14 +184,15 @@ model MealGroup {
   name          String
   maxSelections Int    @default(1)
 
-  choices MealChoice[]
+  choices   MealChoice[]
+  menuLinks MenuMealGroup[] // <-- Opposite of MenuMealGroup.group
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
 
 model MealChoice {
-  id       String @id @default(cuid())
+  id       String  @id @default(cuid())
   name     String
   imageUrl String? @db.Text
 
@@ -207,6 +224,8 @@ model MealChoice {
 
   orderItems OrderItem[]
 
+  menuLinks MenuMealChoice[] // <-- Opposite of MenuMealChoice.choice
+
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
 }
@@ -218,6 +237,68 @@ model Allergen {
   mealChoices MealChoice[]
 }
 
+/// ------------------------------------------------------
+/// Menus (variants like Standard / Gluten Free / Dairy Free)
+/// ------------------------------------------------------
+
+model Menu {
+  id     String  @id @default(cuid())
+  name   String
+  slug   String  @unique @default(cuid())
+  active Boolean @default(true)
+
+  schoolLinks MenuSchool[]
+  pupils Pupil[]
+  groupLinks  MenuMealGroup[]
+  choiceLinks MenuMealChoice[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([name])
+}
+
+model MenuSchool {
+  id       String @id @default(cuid())
+  menuId   String
+  schoolId String
+
+  menu   Menu   @relation(fields: [menuId], references: [id], onDelete: Cascade)
+  school School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  @@unique([menuId, schoolId])
+  @@index([menuId])
+  @@index([schoolId])
+}
+
+model MenuMealGroup {
+  id      String @id @default(cuid())
+  menuId  String
+  groupId String
+
+  // Optional per-menu override (handy)
+  maxSelectionsOverride Int?
+
+  menu  Menu      @relation(fields: [menuId], references: [id], onDelete: Cascade)
+  group MealGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@unique([menuId, groupId])
+  @@index([menuId])
+  @@index([groupId])
+}
+
+model MenuMealChoice {
+  id       String @id @default(cuid())
+  menuId   String
+  choiceId String
+
+  menu   Menu       @relation(fields: [menuId], references: [id], onDelete: Cascade)
+  choice MealChoice @relation(fields: [choiceId], references: [id], onDelete: Cascade)
+
+  @@unique([menuId, choiceId])
+  @@index([menuId])
+  @@index([choiceId])
+}
 
 /// ------------------------------------------------------
 /// Orders
@@ -238,19 +319,18 @@ model LunchOrder {
 }
 
 model OrderItem {
-  id        String     @id @default(cuid())
-  orderId   String
-  order     LunchOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  id      String     @id @default(cuid())
+  orderId String
+  order   LunchOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
-  choiceId  String
-  choice    MealChoice @relation(fields: [choiceId], references: [id])
+  choiceId String
+  choice   MealChoice @relation(fields: [choiceId], references: [id])
 
   selectedIngredients String[] @default([])
 
-  createdAt DateTime   @default(now())
-  updatedAt DateTime   @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
-
 
 /// ------------------------------------------------------
 /// Schedule (Term/Holiday)
@@ -272,20 +352,16 @@ model Schedule {
   @@unique([name, schoolId])
 }
 
-enum PrintJobStatus {
-  CREATED
-  PRINTING
-  PAUSED
-  COMPLETED
-  FAILED
-}
+/// ------------------------------------------------------
+/// Print Jobs
+/// ------------------------------------------------------
 
 model PrintJob {
-  id          String         @id @default(cuid())
-  createdAt   DateTime       @default(now())
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
 
   createdById String?
-  createdBy   User?          @relation("UserPrintJobs", fields: [createdById], references: [id], onDelete: SetNull)
+  createdBy   User?   @relation("UserPrintJobs", fields: [createdById], references: [id], onDelete: SetNull)
 
   date        DateTime
   schoolId    String?
@@ -295,35 +371,34 @@ model PrintJob {
   nextSeq     Int            @default(1)
   totalLabels Int            @default(0)
 
-  items       PrintJobItem[]
+  items PrintJobItem[]
 
   @@index([date])
   @@index([status])
   @@index([createdById])
 }
 
-
 model PrintJobItem {
-  id          String   @id @default(cuid())
+  id String @id @default(cuid())
 
-  jobId       String
-  job         PrintJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  jobId String
+  job   PrintJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
 
   schoolName String
   choiceId   String?
   allergens  String[] @default([])
-  
-  seq         Int
 
-  pupilId     String
-  pupilName   String
-  classroom   String
-  mealType    String   // "LUNCH" | "SNACK"
-  choice      String
-  extras      String[] @default([])
+  seq Int
 
-  printedAt   DateTime?
-  printError  String?
+  pupilId   String
+  pupilName String
+  classroom String
+  mealType  String // "LUNCH" | "SNACK"
+  choice    String
+  extras    String[] @default([])
+
+  printedAt  DateTime?
+  printError String?
 
   @@unique([jobId, seq])
   @@index([jobId, seq])

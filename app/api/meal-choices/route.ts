@@ -5,17 +5,25 @@ function isAdmin(user: any) {
   return user && user.role === "ADMIN";
 }
 
-
 export const GET = auth(async (req) => {
   if (!req.auth || !isAdmin(req.auth.user)) {
     return new Response("Unauthorized", { status: 401 });
   }
 
   const { searchParams } = new URL(req.url);
-  const groupId = searchParams.get("groupId");
+  const groupId = searchParams.get("groupId")?.trim() || null;
+  const menuId = searchParams.get("menuId")?.trim() || null;
+
+  if (!menuId) {
+    return new Response("menuId is required", { status: 400 });
+  }
 
   const mealChoices = await prisma.mealChoice.findMany({
-    where: groupId ? { groupId } : undefined,
+    where: {
+      ...(groupId ? { groupId } : {}),
+      active: true,
+      menuLinks: { some: { menuId } }, // ✅ only choices in this menu
+    },
     include: { allergens: true },
     orderBy: { createdAt: "asc" },
   });
@@ -23,17 +31,37 @@ export const GET = auth(async (req) => {
   return Response.json(mealChoices);
 });
 
-
 export const POST = auth(async (req) => {
   if (!req.auth || !isAdmin(req.auth.user)) {
     return new Response("Unauthorized", { status: 401 });
   }
 
   const data = await req.json();
-  const { active, ...safe } = data; // <-- drop active
+  const { menuId, active, ...safe } = data; // drop active here if you want
 
-  const mealChoice = await prisma.mealChoice.create({ data: safe });
-  return Response.json(mealChoice);
+  if (!menuId) return new Response("menuId is required", { status: 400 });
+  if (!safe?.groupId) return new Response("groupId is required", { status: 400 });
+  if (!safe?.name || !String(safe.name).trim()) return new Response("name is required", { status: 400 });
+
+  const created = await prisma.$transaction(async (tx) => {
+    const mealChoice = await tx.mealChoice.create({
+      data: {
+        ...safe,
+        // If you DO want to allow active on create, uncomment:
+        // active: typeof active === "boolean" ? active : true,
+      },
+      include: { allergens: true },
+    });
+
+    // ✅ link choice to menu
+    await tx.menuMealChoice.create({
+      data: { menuId, choiceId: mealChoice.id },
+    });
+
+    return mealChoice;
+  });
+
+  return Response.json(created);
 });
 
 export const PUT = auth(async (req) => {
@@ -62,7 +90,12 @@ export const DELETE = auth(async (req) => {
   if (!req.auth || !isAdmin(req.auth.user)) {
     return new Response("Unauthorized", { status: 401 });
   }
+
   const { id } = await req.json();
+
+  // optional: remove joins first (safe even if cascade exists)
+  await prisma.menuMealChoice.deleteMany({ where: { choiceId: id } });
+
   await prisma.mealChoice.delete({ where: { id } });
   return Response.json({ success: true });
 });
