@@ -34,7 +34,7 @@ export const GET = async (req: Request, { params }: { params: { id: string } }) 
 ^CI28
 ^PW${PW}
 ^LL${LL}
-^MD20
+^MD10
 ^FO18,18^A0N,34,34^FD${header}^FS
 ^FO18,62^A0N,30,30^FD${it.pupilName}^FS
 ^FO18,98^A0N,24,24^FD${it.classroom}^FS

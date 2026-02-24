@@ -692,19 +692,22 @@ export default function PupilLunchOrdersPage() {
         </TabsContent>
       </Tabs>
 
-      {modalDay && (
-        <DayEditModal
-          dateStr={modalDay}
-          mealGroups={mealGroups}
-          selections={selections as any}
-          onSelect={(d, g, choices) => {
-            if (!orderableDays.has(d)) return;
-            handleSelect(d, g, choices);
-          }}
-          onClose={() => setModalDay(null)}
-        />
-      )}
-
+{modalDay && (
+  <DayEditModal
+    dateStr={modalDay}
+    mealGroups={mealGroups}
+    selections={selections as any}
+    onSelect={(d, g, choices) => {
+      if (!orderableDays.has(d)) return;
+      handleSelect(d, g, choices);
+    }}
+    onUpdateConfig={(d, g, choiceId, extras) => {
+      if (!orderableDays.has(d)) return;
+      handleUpdateConfig(d, g, choiceId, extras);
+    }}
+    onClose={() => setModalDay(null)}
+  />
+)}
       {/* Guard: incomplete week + dirty */}
       <AlertDialog open={guardOpen} onOpenChange={setGuardOpen}>
         <AlertDialogContent>

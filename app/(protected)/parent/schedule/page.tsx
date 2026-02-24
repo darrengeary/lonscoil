@@ -31,7 +31,7 @@ type Schedule = {
   name: string;
   type: ScheduleType;
   startDate: string; // ISO from API
-  endDate: string;   // ISO from API
+  endDate: string; // ISO from API
   schoolId: string;
   school?: { id: string; name: string };
 };
@@ -53,20 +53,13 @@ function getCalendarDays(month: Date) {
 }
 
 /**
- * IMPORTANT:
- * Treat schedules as date-only ranges.
- * - start: startOfDay(local)
- * - end: endOfDay(local)
+ * Treat schedules as date-only ranges (local).
  * This avoids off-by-one caused by UTC midnight parsing.
  */
 function inScheduleRange(day: Date, startIso: string, endIso: string) {
   const dayLocal = startOfDay(day);
-
-  // parse ISO and normalize to local day boundaries
   const startLocal = startOfDay(parseISO(startIso));
   const endLocal = endOfDay(parseISO(endIso));
-
-  // Inclusive range: start <= day <= end
   return !isBefore(dayLocal, startLocal) && !isAfter(dayLocal, endLocal);
 }
 
@@ -114,19 +107,26 @@ export default function ParentSchedulesPage() {
     })();
   }, [schoolId]);
 
+  /**
+   * Color rule:
+   * - Holiday => red
+   * - Inside any TERM => green
+   * - Outside TERM => red
+   */
   function getScheduleForDay(date: Date) {
-    // Holiday overrides term
     const holiday = schedules.find(
       (s) => s.type === "HOLIDAY" && inScheduleRange(date, s.startDate, s.endDate)
     );
-    if (holiday) return { ...holiday, color: "bg-red-300" };
 
     const term = schedules.find(
       (s) => s.type === "TERM" && inScheduleRange(date, s.startDate, s.endDate)
     );
-    if (term) return { ...term, color: "bg-green-300" };
 
-    return null;
+    if (holiday) return { kind: "HOLIDAY" as const, schedule: holiday, color: "bg-red-300" };
+    if (term) return { kind: "TERM" as const, schedule: term, color: "bg-green-300" };
+
+    // Outside term
+    return { kind: "OUTSIDE_TERM" as const, schedule: null, color: "bg-red-200" };
   }
 
   if (status === "loading") {
@@ -158,11 +158,17 @@ export default function ParentSchedulesPage() {
         <TabsContent value="calendar">
           <Card className="p-4">
             <div className="flex items-center justify-between mb-2">
-              <Button variant="ghost" onClick={() => setCalendarMonth((m) => normalizeMonth(addMonths(m, -1)))}>
+              <Button
+                variant="ghost"
+                onClick={() => setCalendarMonth((m) => normalizeMonth(addMonths(m, -1)))}
+              >
                 ← Prev
               </Button>
               <span className="font-medium">{format(viewMonth, "MMMM yyyy")}</span>
-              <Button variant="ghost" onClick={() => setCalendarMonth((m) => normalizeMonth(addMonths(m, 1)))}>
+              <Button
+                variant="ghost"
+                onClick={() => setCalendarMonth((m) => normalizeMonth(addMonths(m, 1)))}
+              >
                 Next →
               </Button>
             </div>
@@ -173,37 +179,48 @@ export default function ParentSchedulesPage() {
                   {d}
                 </div>
               ))}
+{calendarDays.map((date) => {
+  const outOfMonth = !isSameMonth(date, viewMonth);
+  const info = getScheduleForDay(date);
 
-              {calendarDays.map((date) => {
-                const outOfMonth = !isSameMonth(date, viewMonth);
-                const schedule = getScheduleForDay(date);
+  let label = "";
+  if (info.kind === "HOLIDAY" && info.schedule) {
+    const start = parseISO(info.schedule.startDate);
+    if (isSameDay(date, start)) label = info.schedule.name;
+  }
 
-                let label = "";
-                if (schedule) {
-                  const start = parseISO(schedule.startDate);
-                  const end = parseISO(schedule.endDate);
-                  if (isSameDay(date, start) || isSameDay(date, end)) label = schedule.name;
-                }
+  return (
+    <div
+      key={format(date, "yyyy-MM-dd")}
+      className={[
+        "h-16 rounded flex flex-col items-start justify-between p-1 relative transition",
+        info.color, // ✅ background
+        outOfMonth ? "text-gray-500" : "text-gray-900",
+      ].join(" ")}
+      style={{ opacity: outOfMonth ? 0.65 : 1 }}
+    >
+      <span className="text-xs">{format(date, "d")}</span>
 
-                return (
-                  <div
-                    key={format(date, "yyyy-MM-dd")}
-                    className={[
-                      "h-16 rounded flex flex-col items-start justify-between p-1 relative transition",
-                      outOfMonth ? "bg-gray-100 text-gray-400" : "bg-white",
-                      schedule ? (schedule as any).color : "",
-                    ].join(" ")}
-                    style={{ opacity: outOfMonth ? 0.7 : 1 }}
-                  >
-                    <span className="text-xs">{format(date, "d")}</span>
-                    {label && (
-                      <span className="absolute bottom-1 left-1 right-1 bg-white/80 text-xs text-center font-bold rounded">
-                        {label}
-                      </span>
-                    )}
-                  </div>
-                );
-              })}
+      {label && (
+        <span className="absolute bottom-1 left-1 right-1 bg-white/80 text-xs text-center font-bold rounded">
+          {label}
+        </span>
+      )}
+    </div>
+  );
+})}
+            </div>
+
+            {/* Optional legend */}
+            <div className="flex gap-4 mt-3 text-xs text-muted-foreground">
+              <div className="flex items-center gap-2">
+                <span className="inline-block h-3 w-3 rounded bg-green-300 border" />
+                In term
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="inline-block h-3 w-3 rounded bg-red-300 border" />
+                Holiday / closed
+              </div>
             </div>
           </Card>
         </TabsContent>
@@ -227,9 +244,15 @@ export default function ParentSchedulesPage() {
               <table className="min-w-[400px] w-full text-sm text-left rounded-2xl overflow-hidden">
                 <thead>
                   <tr className="bg-[#F4F7FA]">
-                    <th className="py-3 px-4 text-left text-base font-semibold text-[#27364B] rounded-tl-2xl">Name</th>
-                    <th className="py-3 px-4 text-left text-base font-semibold text-[#27364B]">Type</th>
-                    <th className="py-3 px-4 text-right text-base font-semibold text-[#27364B] rounded-tr-2xl">Dates</th>
+                    <th className="py-3 px-4 text-left text-base font-semibold text-[#27364B] rounded-tl-2xl">
+                      Name
+                    </th>
+                    <th className="py-3 px-4 text-left text-base font-semibold text-[#27364B]">
+                      Type
+                    </th>
+                    <th className="py-3 px-4 text-right text-base font-semibold text-[#27364B] rounded-tr-2xl">
+                      Dates
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -250,7 +273,8 @@ export default function ParentSchedulesPage() {
                       </td>
                       <td className="py-3 px-4 text-right">
                         <span className="inline-block px-4 py-1 rounded-full bg-[#F4F7FA] text-[#27364B] text-xs font-semibold">
-                          {format(new Date(sch.startDate), "EEE d MMM")} – {format(new Date(sch.endDate), "EEE d MMM")}
+                          {format(new Date(sch.startDate), "EEE d MMM")} –{" "}
+                          {format(new Date(sch.endDate), "EEE d MMM")}
                         </span>
                       </td>
                     </tr>

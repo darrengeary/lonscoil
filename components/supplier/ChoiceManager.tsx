@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
@@ -119,6 +119,31 @@ function removeTag(list: string[], v: string) {
   return list.filter((x) => x !== v);
 }
 
+/** IMPORTANT: keep outside ChoiceManager so it doesn't remount each render */
+function LabeledInput({
+  label,
+  value,
+  onChange,
+  placeholder,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+}) {
+  return (
+    <div className="space-y-1">
+      <div className="text-xs font-semibold text-gray-600">{label}</div>
+      <Input
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder ?? ""}
+        inputMode="decimal"
+      />
+    </div>
+  );
+}
+
 export default function ChoiceManager({ groupId, initialChoices, disabled = false }: Props) {
   const [choices, setChoices] = useState<MealChoice[]>(initialChoices ?? []);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -185,7 +210,7 @@ export default function ChoiceManager({ groupId, initialChoices, disabled = fals
   const [addFibre, setAddFibre] = useState("");
   const [addSalt, setAddSalt] = useState("");
 
-  // Load meal choices (fresh on refresh)
+  // Load meal choices
   useEffect(() => {
     let cancelled = false;
 
@@ -200,7 +225,7 @@ export default function ChoiceManager({ groupId, initialChoices, disabled = fals
     };
   }, [groupId]);
 
-  // Load allergen suggestions (with colors)
+  // Load allergens
   useEffect(() => {
     let cancelled = false;
 
@@ -289,25 +314,6 @@ export default function ChoiceManager({ groupId, initialChoices, disabled = fals
     setAddSalt("");
   }
 
-    function LabeledInput({
-    label,
-    value,
-    onChange,
-    placeholder,
-  }: {
-    label: string;
-    value: string;
-    onChange: (v: string) => void;
-    placeholder?: string;
-  }) {
-    return (
-      <div className="space-y-1">
-        <div className="text-xs font-semibold text-gray-600">{label}</div>
-        <Input value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder ?? ""} />
-      </div>
-    );
-  }
-
   function closeAdd() {
     setAddOpen(false);
     setAddFile(null);
@@ -321,14 +327,14 @@ export default function ChoiceManager({ groupId, initialChoices, disabled = fals
     try {
       setBusyId(editingChoice.id);
 
-      // Upload first if needed, and show immediately
       let imageUrl: string | null | undefined = editingChoice.imageUrl ?? null;
       if (editFile) {
         const url = await uploadMealChoiceImage(editFile);
         imageUrl = url;
 
-        // update UI immediately
-        setChoices((prev) => prev.map((c) => (c.id === editingChoice.id ? { ...c, imageUrl: url } : c)));
+        setChoices((prev) =>
+          prev.map((c) => (c.id === editingChoice.id ? { ...c, imageUrl: url } : c))
+        );
         setEditPreviewUrl(url);
       }
 
@@ -370,10 +376,8 @@ export default function ChoiceManager({ groupId, initialChoices, disabled = fals
     try {
       setBusyId("__add__");
 
-      // 1) create to get ID
       const created = await createMealChoice({ name, groupId, active: addActive });
 
-      // 2) persist fields (1 PUT)
       let updated = await updateMealChoice({
         id: created.id,
         active: addActive,
@@ -392,7 +396,6 @@ export default function ChoiceManager({ groupId, initialChoices, disabled = fals
         saltG: safeNumOrNull(addSalt),
       });
 
-      // 3) optional upload image, show immediately
       if (addFile) {
         const url = await uploadMealChoiceImage(addFile);
         updated = await updateMealChoice({ id: created.id, imageUrl: url });
@@ -407,10 +410,11 @@ export default function ChoiceManager({ groupId, initialChoices, disabled = fals
     }
   }
 
-  // ---------- Render helpers ----------
   const editHeroSrc =
     editPreviewUrl ??
-    (editingChoice?.imageUrl && editingChoice.imageUrl.length > 0 ? editingChoice.imageUrl : PLACEHOLDER_IMG);
+    (editingChoice?.imageUrl && editingChoice.imageUrl.length > 0
+      ? editingChoice.imageUrl
+      : PLACEHOLDER_IMG);
 
   const addHeroSrc = addPreviewUrl ?? PLACEHOLDER_IMG;
 
@@ -465,11 +469,17 @@ export default function ChoiceManager({ groupId, initialChoices, disabled = fals
       )}
 
       {/* EDIT MODAL */}
-      <Dialog open={editOpen} onOpenChange={(v) => (v ? null : closeEdit())}>
-        <DialogContent className="sm:max-w-lg bg-white text-slate-900 shadow-xl rounded-2xl">
+      <Dialog
+        open={editOpen}
+        onOpenChange={(open) => {
+          if (!open) closeEdit();
+          else setEditOpen(true);
+        }}
+      >
+        <DialogContent className="sm:max-w-lg bg-white text-slate-900 shadow-xl rounded-2xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Edit choice</DialogTitle>
-            <DialogDescription>Update image, allergens, ingredients, availability, and nutrition.</DialogDescription>
+            <DialogDescription>Update image, allergens, extras, ingredients, availability, and nutrition.</DialogDescription>
           </DialogHeader>
 
           {editingChoice && (
@@ -482,7 +492,7 @@ export default function ChoiceManager({ groupId, initialChoices, disabled = fals
                 </div>
               </div>
 
-              {/* ACTIVE prominent */}
+              {/* ACTIVE */}
               <Button
                 type="button"
                 className={`w-full rounded-2xl py-6 text-base font-semibold ${
@@ -508,7 +518,7 @@ export default function ChoiceManager({ groupId, initialChoices, disabled = fals
                 <Input value={editName} onChange={(e) => setEditName(e.target.value)} placeholder="Choice name" />
               </div>
 
-              {/* Replace image (preview immediately) */}
+              {/* Replace image */}
               <div className="space-y-2">
                 <div className="text-sm font-medium">Replace image</div>
                 <label className="inline-flex items-center gap-2 text-sm cursor-pointer text-blue-700">
@@ -530,7 +540,7 @@ export default function ChoiceManager({ groupId, initialChoices, disabled = fals
                 </label>
               </div>
 
-              {/* Allergens (dropdown shows all on focus) */}
+              {/* Allergens */}
               <div className="space-y-2">
                 <div className="text-sm font-medium">Allergens</div>
 
@@ -597,9 +607,9 @@ export default function ChoiceManager({ groupId, initialChoices, disabled = fals
                 </div>
               </div>
 
-              {/* Ingredients (no colour) */}
+              {/* Ingredients */}
               <div className="space-y-2">
-                <div className="text-sm font-medium">Ingredients</div>
+                <div className="text-sm font-medium">Extras</div>
 
                 <div className="flex flex-wrap gap-2">
                   {editIngredients.map((t) => (
@@ -618,7 +628,7 @@ export default function ChoiceManager({ groupId, initialChoices, disabled = fals
 
                 <Input
                   value={editIngredientInput}
-                  placeholder="Type ingredient and press Enter…"
+                  placeholder="Type Extras and press Enter…"
                   onChange={(e) => setEditIngredientInput(e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === "Enter") {
@@ -633,7 +643,7 @@ export default function ChoiceManager({ groupId, initialChoices, disabled = fals
                 />
               </div>
 
-              {/* Availability (calendar popover) */}
+              {/* Availability */}
               <div className="space-y-2">
                 <div className="text-sm font-medium">Availability</div>
 
@@ -671,7 +681,7 @@ export default function ChoiceManager({ groupId, initialChoices, disabled = fals
                   <LabeledInput label="Calories (kcal)" value={editCalories} onChange={setEditCalories} />
                   <LabeledInput label="Protein (g)" value={editProtein} onChange={setEditProtein} />
                   <LabeledInput label="Carbs (g)" value={editCarbs} onChange={setEditCarbs} />
-                  <LabeledInput label="Sugars (g)" value={editSugars} onChange={setEditSugars}  />
+                  <LabeledInput label="Sugars (g)" value={editSugars} onChange={setEditSugars} />
                   <LabeledInput label="Fat (g)" value={editFat} onChange={setEditFat} />
                   <LabeledInput label="Saturates (g)" value={editSaturates} onChange={setEditSaturates} />
                   <LabeledInput label="Fibre (g)" value={editFibre} onChange={setEditFibre} />
@@ -693,8 +703,14 @@ export default function ChoiceManager({ groupId, initialChoices, disabled = fals
       </Dialog>
 
       {/* ADD MODAL */}
-      <Dialog open={addOpen} onOpenChange={(v) => (v ? null : closeAdd())}>
-      <DialogContent className="sm:max-w-lg bg-white text-slate-900 shadow-xl rounded-2xl">
+      <Dialog
+        open={addOpen}
+        onOpenChange={(open) => {
+          if (!open) closeAdd();
+          else setAddOpen(true);
+        }}
+      >
+        <DialogContent className="sm:max-w-lg bg-white text-slate-900 shadow-xl rounded-2xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Add choice</DialogTitle>
             <DialogDescription>Create a new choice with optional image, allergens, availability, and nutrition.</DialogDescription>
@@ -709,7 +725,7 @@ export default function ChoiceManager({ groupId, initialChoices, disabled = fals
               </div>
             </div>
 
-            {/* ACTIVE prominent */}
+            {/* ACTIVE */}
             <Button
               type="button"
               className={`w-full rounded-2xl py-6 text-base font-semibold ${
@@ -735,7 +751,7 @@ export default function ChoiceManager({ groupId, initialChoices, disabled = fals
               <Input value={addName} onChange={(e) => setAddName(e.target.value)} placeholder="New choice name" />
             </div>
 
-            {/* Image (preview immediately) */}
+            {/* Image */}
             <div className="space-y-2">
               <div className="text-sm font-medium">Image (optional)</div>
               <label className="inline-flex items-center gap-2 text-sm cursor-pointer text-blue-700">
@@ -826,7 +842,7 @@ export default function ChoiceManager({ groupId, initialChoices, disabled = fals
 
             {/* Ingredients */}
             <div className="space-y-2">
-              <div className="text-sm font-medium">Ingredients</div>
+              <div className="text-sm font-medium">Extras</div>
 
               <div className="flex flex-wrap gap-2">
                 {addIngredients.map((t) => (
@@ -845,7 +861,7 @@ export default function ChoiceManager({ groupId, initialChoices, disabled = fals
 
               <Input
                 value={addIngredientInput}
-                placeholder="Type ingredient and press Enter…"
+                placeholder="Type Extras and press Enter…"
                 onChange={(e) => setAddIngredientInput(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") {
@@ -894,16 +910,16 @@ export default function ChoiceManager({ groupId, initialChoices, disabled = fals
             {/* Nutrition */}
             <div className="space-y-2">
               <div className="text-sm font-medium">Nutrition (per portion)</div>
-                <div className="grid grid-cols-2 gap-3">
-                  <LabeledInput label="Calories (kcal)" value={addCalories} onChange={setAddCalories}  />
-                  <LabeledInput label="Protein (g)" value={addProtein} onChange={setAddProtein}  />
-                  <LabeledInput label="Carbs (g)" value={addCarbs} onChange={setAddCarbs}  />
-                  <LabeledInput label="Sugars (g)" value={addSugars} onChange={setAddSugars}  />
-                  <LabeledInput label="Fat (g)" value={addFat} onChange={setAddFat}  />
-                  <LabeledInput label="Saturates (g)" value={addSaturates} onChange={setAddSaturates}  />
-                  <LabeledInput label="Fibre (g)" value={addFibre} onChange={setAddFibre}  />
-                  <LabeledInput label="Salt (g)" value={addSalt} onChange={setAddSalt} />
-                </div>
+              <div className="grid grid-cols-2 gap-3">
+                <LabeledInput label="Calories (kcal)" value={addCalories} onChange={setAddCalories} />
+                <LabeledInput label="Protein (g)" value={addProtein} onChange={setAddProtein} />
+                <LabeledInput label="Carbs (g)" value={addCarbs} onChange={setAddCarbs} />
+                <LabeledInput label="Sugars (g)" value={addSugars} onChange={setAddSugars} />
+                <LabeledInput label="Fat (g)" value={addFat} onChange={setAddFat} />
+                <LabeledInput label="Saturates (g)" value={addSaturates} onChange={setAddSaturates} />
+                <LabeledInput label="Fibre (g)" value={addFibre} onChange={setAddFibre} />
+                <LabeledInput label="Salt (g)" value={addSalt} onChange={setAddSalt} />
+              </div>
             </div>
           </div>
 
