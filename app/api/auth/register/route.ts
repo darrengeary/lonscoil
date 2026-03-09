@@ -67,7 +67,7 @@ export async function POST(req: Request) {
       // 4) Claim pupils, and ensure all rows were actually updated (race-safe)
       const res = await tx.pupil.updateMany({
         where: { id: { in: codes }, status: "UNREGISTERED" },
-        data: { parentId: user.id, status: "ACTIVE" },
+        data: { parentId: user.id, status: "REGISTERED" },
       });
 
       if (res.count !== codes.length) {

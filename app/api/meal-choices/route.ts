@@ -21,7 +21,6 @@ export const GET = auth(async (req) => {
   const mealChoices = await prisma.mealChoice.findMany({
     where: {
       ...(groupId ? { groupId } : {}),
-      active: true,
       menuLinks: { some: { menuId } }, // ✅ only choices in this menu
     },
     include: { allergens: true },
@@ -42,7 +41,7 @@ export const POST = auth(async (req) => {
   if (!menuId) return new Response("menuId is required", { status: 400 });
   if (!safe?.groupId) return new Response("groupId is required", { status: 400 });
   if (!safe?.name || !String(safe.name).trim()) return new Response("name is required", { status: 400 });
-
+  
   const created = await prisma.$transaction(async (tx) => {
     const mealChoice = await tx.mealChoice.create({
       data: {

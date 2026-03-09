@@ -42,7 +42,7 @@ export const GET = auth(async (req) => {
   const result = classrooms.map((cls) => {
     let registeredCount = 0, unregisteredCount = 0;
     for (const pupil of cls.pupils) {
-      if (pupil.status === "ACTIVE") registeredCount++;
+      if (pupil.status === "REGISTERED") registeredCount++;
       else unregisteredCount++;
     }
     return {
@@ -81,19 +81,54 @@ export const PUT = auth(async (req) => {
   if (!user || (!isAdmin(user) && !isSchoolAdmin(user))) {
     return new Response("Unauthorized", { status: 401 });
   }
-  const data = await req.json();
-  const { id, ...update } = data;
 
-  // Schooladmin: fetch classroom, verify it's in their school!
+  const data = await req.json().catch(() => null);
+  const { id, ...update } = data ?? {};
+
+  if (!id) {
+    return new Response("Classroom id is required", { status: 400 });
+  }
+
+  const nextName =
+    typeof update?.name === "string" ? update.name.trim() : undefined;
+
+  if (nextName !== undefined && !nextName) {
+    return new Response("Classroom name is required", { status: 400 });
+  }
+
+  // SCHOOLADMIN: verify classroom belongs to their school
   if (isSchoolAdmin(user)) {
-    const classroom = await prisma.classroom.findUnique({ where: { id } });
+    const classroom = await prisma.classroom.findUnique({
+      where: { id },
+      select: { id: true, schoolId: true },
+    });
+
     if (!classroom || classroom.schoolId !== user.schoolId) {
       return new Response("Forbidden", { status: 403 });
     }
   }
 
-  const classroom = await prisma.classroom.update({ where: { id }, data: update });
-  return Response.json(classroom);
+  try {
+    const updated = await prisma.classroom.update({
+      where: { id },
+      data: {
+        ...(nextName !== undefined ? { name: nextName } : {}),
+      },
+      select: {
+        id: true,
+        name: true,
+        schoolId: true,
+        totalPupils: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+
+    return Response.json(updated);
+  } catch (error) {
+    console.error("PUT /api/classrooms error:", error);
+    return new Response("Failed to update classroom", { status: 500 });
+  }
 });
 
 // DELETE: Remove classroom (admin or schooladmin)

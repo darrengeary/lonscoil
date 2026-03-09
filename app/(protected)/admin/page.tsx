@@ -1,19 +1,23 @@
 // app/(protected)/supplier/meals/page.tsx
 import { prisma } from "@/lib/db";
 import { DashboardHeader } from "@/components/dashboard/header";
-import MenuManager, {
-  MenuSection,
-} from "@/components/supplier/MenuManager";
+import MenuManager, { MenuSection } from "@/components/supplier/MenuManager";
 
 export default async function MealsPage() {
-  // Load menus (global for now; if you scope by schoolId, add where: { schoolId } )
   const menus = await prisma.menu.findMany({
     where: { active: true },
     orderBy: { name: "asc" },
-    select: { id: true, name: true, slug: true, active: true },
+    select: {
+      id: true,
+      name: true,
+      active: true,
+      schoolLinks: {
+        select: { school: { select: { id: true, name: true } } },
+        orderBy: { school: { name: "asc" } },
+      },
+    },
   });
 
-  // For each menu, load linked groups + menu-filtered choices
   const sections: MenuSection[] = await Promise.all(
     menus.map(async (m) => {
       const groupLinks = await prisma.menuMealGroup.findMany({
@@ -41,12 +45,17 @@ export default async function MealsPage() {
       const groups = groupLinks.map((gl) => gl.group);
 
       return {
-        menu: m,
+        menu: {
+          id: m.id,
+          name: m.name,
+          active: m.active,
+          schools: m.schoolLinks.map((x) => x.school),
+        },
         groups: groups.map((g) => ({
           id: g.id,
           name: g.name,
           maxSelections: g.maxSelections,
-          choices: g.choices.map((c) => ({
+          choices: (g.choices ?? []).map((c) => ({
             id: c.id,
             name: c.name,
             groupId: c.groupId,

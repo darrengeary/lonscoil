@@ -15,6 +15,9 @@ import {
   parse,
   isValid,
   startOfDay,
+  endOfDay,
+  subDays,
+  isAfter,
 } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -52,12 +55,12 @@ type Nutrition = {
 interface MealGroup {
   id: string;
   name: string;
-  maxSelections: number; // "up to"
+  maxSelections: number;
   choices: ({
     id: string;
     name: string;
     imageUrl?: string | null;
-    ingredients?: string[]; // extras list
+    ingredients?: string[];
   } & Nutrition)[];
 }
 
@@ -67,22 +70,17 @@ type Selections = Record<
     string,
     {
       choiceIds: string[];
-      configByChoiceId: Record<string, { selectedIngredients: string[] }>;
+      configByChoiceId: Record<string, { selectedIngredients: string[]; extrasConfirmed?: boolean }>;
     }
   >
 >;
 
-// ---------- Constants & Helpers ----------
 const DATE_FMT = "yyyy-MM-dd";
 const ALT_FMT = "dd-MM-yyyy";
 const daysInWeek = 5;
 const weekdayLabels = ["Mon", "Tue", "Wed", "Thu", "Fri"];
 
-async function fetchJSON<T>(
-  url: string,
-  init?: RequestInit,
-  fallback: T = [] as unknown as T
-): Promise<T> {
+async function fetchJSON<T>(url: string, init?: RequestInit, fallback: T = [] as unknown as T): Promise<T> {
   try {
     const res = await fetch(url, init);
     if (!res.ok) return fallback;
@@ -108,6 +106,13 @@ function normalizeDateString(s: string): string {
   return s;
 }
 
+function isPastThursdayCutoffForDate(date: Date) {
+  const wkStart = startOfWeek(date, { weekStartsOn: 1 });
+  // Thu of previous week 23:59 => subDays(Mon,4) == Thu previous week
+  const cutoff = endOfDay(subDays(wkStart, 4));
+  return isAfter(new Date(), cutoff);
+}
+
 function safeAbort(controller?: AbortController, reason?: unknown) {
   try {
     if (controller && !controller.signal.aborted) {
@@ -128,11 +133,12 @@ export default function PupilLunchOrdersPage() {
 
   const [mealGroups, setMealGroups] = useState<MealGroup[]>([]);
   const [selections, setSelections] = useState<Selections>({});
-  const lastLoadedSelectionsRef = useRef<Selections>({}); // for "Cancel changes"
+  const lastLoadedSelectionsRef = useRef<Selections>({});
 
   const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date(), { weekStartsOn: 1 }));
   const [calendarMonth, setCalendarMonth] = useState(new Date());
   const [modalDay, setModalDay] = useState<string | null>(null);
+
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const mountedRef = useRef(true);
@@ -143,6 +149,9 @@ export default function PupilLunchOrdersPage() {
 
   const [orderableDays, setOrderableDays] = useState<Set<string>>(new Set());
   const [holidayDays, setHolidayDays] = useState<Set<string>>(new Set());
+
+  // ✅ NEW: per-choice extras preference (chicken curry extras follow chicken curry everywhere)
+  const [choicePrefs, setChoicePrefs] = useState<Record<string, string[]>>({});
 
   // Navigation guard state
   const [guardOpen, setGuardOpen] = useState(false);
@@ -163,12 +172,15 @@ export default function PupilLunchOrdersPage() {
 
   // ---------- Fetch meal groups ----------
   useEffect(() => {
+    if (!selectedPupil) return;
     const controller = new AbortController();
-    fetchJSON<MealGroup[]>("/api/mealgroups", { signal: controller.signal }, [])
+
+    fetchJSON<MealGroup[]>(`/api/mealgroups?pupilId=${encodeURIComponent(selectedPupil)}`, { signal: controller.signal }, [])
       .then(setMealGroups)
       .catch(() => setMealGroups([]));
+
     return () => safeAbort(controller, "cleanup:mealgroups");
-  }, []);
+  }, [selectedPupil]);
 
   // ---------- Fetch ORDERABLE & HOLIDAY days ----------
   useEffect(() => {
@@ -186,17 +198,15 @@ export default function PupilLunchOrdersPage() {
   }, [selectedPupil]);
 
   // ----- Weekly View days -----
-  const weekdays = useMemo(
-    () => Array.from({ length: daysInWeek }, (_, i) => addDays(weekStart, i)),
-    [weekStart]
-  );
-
+  const weekdays = useMemo(() => Array.from({ length: daysInWeek }, (_, i) => addDays(weekStart, i)), [weekStart]);
   const weekISO = useMemo(() => weekdays.map((d) => format(d, DATE_FMT)), [weekdays]);
 
-  // Completion definitions (YOUR RULES)
+  // completion requires "Complete choice" for each selected choice
   const isGroupComplete = (dateStr: string, groupId: string) => {
-    const ids = selections[dateStr]?.[groupId]?.choiceIds ?? [];
-    return ids.length >= 1; // maxSelections is "up to", group is required so at least 1
+    const group = selections[dateStr]?.[groupId];
+    const ids = group?.choiceIds ?? [];
+    if (ids.length < 1) return false;
+    return ids.every((cid) => group?.configByChoiceId?.[cid]?.extrasConfirmed === true);
   };
 
   const isDayComplete = (dateStr: string) => {
@@ -206,9 +216,8 @@ export default function PupilLunchOrdersPage() {
   const weekOrderableDays = useMemo(() => weekISO.filter((d) => orderableDays.has(d)), [weekISO, orderableDays]);
 
   const weekComplete = useMemo(() => {
-    if (activeTab !== "weekly") return true; // only enforce weekly-or-nothing on weekly nav actions
+    if (activeTab !== "weekly") return true;
     if (!mealGroups.length) return false;
-    // only require completion for orderable days
     return weekOrderableDays.every((d) => isDayComplete(d));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, weekOrderableDays, selections, mealGroups.length]);
@@ -216,7 +225,6 @@ export default function PupilLunchOrdersPage() {
   const incompleteWeek = dirty && activeTab === "weekly" && !weekComplete;
 
   function attemptNav(action: () => void) {
-    // If they have unsaved *incomplete week*, block and force "complete or cancel"
     if (incompleteWeek) {
       pendingNavRef.current = action;
       setGuardOpen(true);
@@ -242,13 +250,12 @@ export default function PupilLunchOrdersPage() {
     const controller = new AbortController();
 
     fetchJSON<Array<{ date: string; items: Array<{ choiceId: string; selectedIngredients?: string[] }> }>>(
-      `/api/lunch-orders?pupilId=${encodeURIComponent(selectedPupil)}&start=${encodeURIComponent(
-        start
-      )}&end=${encodeURIComponent(end)}`,
+      `/api/lunch-orders?pupilId=${encodeURIComponent(selectedPupil)}&start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`,
       { signal: controller.signal },
       []
     ).then((orders) => {
       const sel: Selections = {};
+      const prefs: Record<string, string[]> = {};
 
       orders.forEach((order) => {
         const dateStr = normalizeDateString(order.date);
@@ -267,8 +274,13 @@ export default function PupilLunchOrdersPage() {
             sel[dateStr][group.id].choiceIds.push(choiceId);
           }
 
+          const ing = it.selectedIngredients ?? [];
+          prefs[choiceId] = ing;
+
+          // ✅ treat loaded-from-server as "already confirmed"
           sel[dateStr][group.id].configByChoiceId[choiceId] = {
-            selectedIngredients: it.selectedIngredients ?? [],
+            selectedIngredients: ing,
+            extrasConfirmed: true,
           };
         });
       });
@@ -276,11 +288,39 @@ export default function PupilLunchOrdersPage() {
       setSelections(sel);
       lastLoadedSelectionsRef.current = deepClone(sel);
       setDirty(false);
+
+      // ✅ seed preference map from saved data
+      setChoicePrefs((prev) => ({ ...prev, ...prefs }));
     });
 
     return () => safeAbort(controller, "cleanup:orders");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedPupil, weekStart, calendarMonth, mealGroups.length, activeTab]);
+
+  function handleConfirmChoice(dateStr: string, groupId: string, choiceId: string) {
+    setSelections((prev) => {
+      const day = prev[dateStr] ?? {};
+      const group = day[groupId] ?? { choiceIds: [], configByChoiceId: {} };
+
+      return {
+        ...prev,
+        [dateStr]: {
+          ...day,
+          [groupId]: {
+            ...group,
+            configByChoiceId: {
+              ...group.configByChoiceId,
+              [choiceId]: {
+                selectedIngredients: group.configByChoiceId?.[choiceId]?.selectedIngredients ?? choicePrefs[choiceId] ?? [],
+                extrasConfirmed: true,
+              },
+            },
+          },
+        },
+      };
+    });
+    setDirty(true);
+  }
 
   // ---------- Selection updates ----------
   function handleSelect(dateStr: string, groupId: string, newChoiceIds: string[]) {
@@ -290,7 +330,8 @@ export default function PupilLunchOrdersPage() {
 
       const nextConfig: typeof group.configByChoiceId = {};
       for (const cid of newChoiceIds) {
-        nextConfig[cid] = group.configByChoiceId[cid] ?? { selectedIngredients: [] };
+        nextConfig[cid] =
+          group.configByChoiceId[cid] ?? { selectedIngredients: choicePrefs[cid] ?? [], extrasConfirmed: false };
       }
 
       return {
@@ -308,11 +349,14 @@ export default function PupilLunchOrdersPage() {
   }
 
   function handleUpdateConfig(dateStr: string, groupId: string, choiceId: string, selectedIngredients: string[]) {
+    // ✅ update preference map so it sticks everywhere
+    setChoicePrefs((prev) => ({ ...prev, [choiceId]: selectedIngredients }));
+
     setSelections((prev) => {
       const day = prev[dateStr] ?? {};
       const group = day[groupId] ?? { choiceIds: [], configByChoiceId: {} };
 
-      // ensure choice exists in selection (defensive)
+      // ensure choice exists in selection
       const nextChoiceIds = group.choiceIds.includes(choiceId) ? group.choiceIds : [...group.choiceIds, choiceId];
 
       return {
@@ -323,7 +367,11 @@ export default function PupilLunchOrdersPage() {
             choiceIds: nextChoiceIds,
             configByChoiceId: {
               ...group.configByChoiceId,
-              [choiceId]: { selectedIngredients },
+              [choiceId]: {
+                selectedIngredients,
+                // ✅ changing extras means you must re-confirm
+                extrasConfirmed: false,
+              },
             },
           },
         },
@@ -337,6 +385,20 @@ export default function PupilLunchOrdersPage() {
     const base = selections[dateStr];
     if (!base) return;
 
+    const resetConfirm = (b: typeof base) => {
+      const out: typeof base = deepClone(b);
+      for (const gid of Object.keys(out)) {
+        const g = out[gid];
+        for (const cid of Object.keys(g.configByChoiceId || {})) {
+          g.configByChoiceId[cid] = {
+            selectedIngredients: g.configByChoiceId[cid]?.selectedIngredients ?? choicePrefs[cid] ?? [],
+            extrasConfirmed: false,
+          };
+        }
+      }
+      return out;
+    };
+
     if (type === "next-days") {
       const numDays = daysToCopy[dateStr] ?? 3;
       let added = 0;
@@ -346,7 +408,7 @@ export default function PupilLunchOrdersPage() {
         d = addDays(d, 1);
         const f = format(d, DATE_FMT);
         if (!orderableDays.has(f)) continue;
-        updates[f] = deepClone(base);
+        updates[f] = resetConfirm(base);
         added++;
       }
       if (Object.keys(updates).length) {
@@ -366,7 +428,7 @@ export default function PupilLunchOrdersPage() {
         if (d.getDay() !== dow) continue;
         const f = format(d, DATE_FMT);
         if (!orderableDays.has(f)) continue;
-        updates[f] = deepClone(base);
+        updates[f] = resetConfirm(base);
       }
       if (Object.keys(updates).length) {
         setSelections((prev) => ({ ...prev, ...updates }));
@@ -376,7 +438,87 @@ export default function PupilLunchOrdersPage() {
     }
   }
 
-  // ---------- Save (weekly-or-nothing enforcement) ----------
+  // ✅ Auto-fill next day: if Monday is complete, auto-select same choices on next orderable day (only if empty)
+  function nextOrderableDay(fromDateStr: string) {
+    let d = parse(fromDateStr, DATE_FMT, new Date());
+    for (let i = 0; i < 30; i++) {
+      d = addDays(d, 1);
+      const f = format(d, DATE_FMT);
+      if (orderableDays.has(f)) return f;
+    }
+    return null;
+  }
+
+  useEffect(() => {
+    if (activeTab !== "weekly") return;
+    if (!mealGroups.length) return;
+    if (!weekOrderableDays.length) return;
+
+    const updates: Record<string, Selections[string]> = {};
+
+    for (const dStr of weekOrderableDays) {
+      if (!isDayComplete(dStr)) continue;
+
+      const next = nextOrderableDay(dStr);
+      if (!next) continue;
+      if (!weekOrderableDays.includes(next)) continue;
+
+      const baseDay = selections[dStr];
+      if (!baseDay) continue;
+
+      const targetDay = selections[next] ?? {};
+      const nextDayUpdate: typeof targetDay = { ...targetDay };
+
+      let changed = false;
+
+      for (const g of mealGroups) {
+        const srcGroup = baseDay[g.id];
+        if (!srcGroup?.choiceIds?.length) continue;
+
+        const tgtGroup = targetDay[g.id];
+        const tgtHas = (tgtGroup?.choiceIds?.length ?? 0) > 0;
+        if (tgtHas) continue; // never overwrite
+
+        const copiedConfig: any = {};
+        for (const cid of srcGroup.choiceIds) {
+          copiedConfig[cid] = {
+            selectedIngredients: srcGroup.configByChoiceId?.[cid]?.selectedIngredients ?? choicePrefs[cid] ?? [],
+            extrasConfirmed: false,
+          };
+        }
+
+        nextDayUpdate[g.id] = { choiceIds: [...srcGroup.choiceIds], configByChoiceId: copiedConfig };
+        changed = true;
+      }
+
+      if (changed) updates[next] = nextDayUpdate;
+    }
+
+    if (Object.keys(updates).length === 0) return;
+
+    setSelections((prev) => {
+      let changed = false;
+      const out: Selections = { ...prev };
+      for (const [k, v] of Object.entries(updates)) {
+        const existing = prev[k] ?? {};
+        // ensure still empty groups before applying
+        let okToApply = false;
+        for (const g of mealGroups) {
+          const tgtHas = (existing[g.id]?.choiceIds?.length ?? 0) > 0;
+          const incomingHas = (v[g.id]?.choiceIds?.length ?? 0) > 0;
+          if (!tgtHas && incomingHas) okToApply = true;
+        }
+        if (!okToApply) continue;
+
+        out[k] = { ...(prev[k] ?? {}), ...v };
+        changed = true;
+      }
+      return changed ? out : prev;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selections, activeTab, weekStart, mealGroups.length, weekOrderableDays.join("|"), choicePrefs, orderableDays]);
+
+  // ---------- Save ----------
   async function handleSaveOrders(showToast = true) {
     if (!selectedPupil) return;
 
@@ -396,7 +538,7 @@ export default function PupilLunchOrdersPage() {
         items: Object.values(groups).flatMap((g) =>
           g.choiceIds.map((choiceId) => ({
             choiceId,
-            selectedIngredients: g.configByChoiceId?.[choiceId]?.selectedIngredients ?? [],
+            selectedIngredients: g.configByChoiceId?.[choiceId]?.selectedIngredients ?? choicePrefs[choiceId] ?? [],
           }))
         ),
       }));
@@ -423,7 +565,7 @@ export default function PupilLunchOrdersPage() {
     }
   }
 
-  // Warn on browser/tab close if unsaved changes (browser-controlled message)
+  // Warn on browser/tab close if unsaved changes
   useEffect(() => {
     mountedRef.current = true;
     const beforeUnload = (e: BeforeUnloadEvent) => {
@@ -450,14 +592,18 @@ export default function PupilLunchOrdersPage() {
     if (isLocked || !orderableDays.has(d)) return;
     handleUpdateConfig(d, g, choiceId, extras);
   };
+  const makeSafeOnConfirm = (isLocked: boolean) => (d: string, g: string, c: string) => {
+    if (isLocked || !orderableDays.has(d)) return;
+    handleConfirmChoice(d, g, c);
+  };
 
-  // ----- Holiday banners -----
+  // Holiday banners
   const weekOrderableCount = weekISO.filter((d) => orderableDays.has(d)).length;
   const weekHolidayCount = weekISO.filter((d) => holidayDays.has(d)).length;
   const showHolidayWeekBanner = weekOrderableCount === 0 && weekHolidayCount === daysInWeek;
   const showPartialHolidayBanner = weekHolidayCount > 0 && weekHolidayCount < daysInWeek;
 
-  // ----- Calendar View grid -----
+  // Calendar grid
   const firstOfMonth = startOfMonth(calendarMonth);
   const lastOfMonth = endOfMonth(calendarMonth);
   const gridStart = startOfWeek(firstOfMonth, { weekStartsOn: 1 });
@@ -509,15 +655,13 @@ export default function PupilLunchOrdersPage() {
 
         {activeTab === "weekly" && (
           <div className="text-sm text-muted-foreground">
-            Week status: {weekComplete ? "Complete" : "Incomplete"} {weekOrderableDays.length ? `(${weekOrderableDays.filter(isDayComplete).length}/${weekOrderableDays.length} days)` : ""}
+            Week status: {weekComplete ? "Complete" : "Incomplete"}{" "}
+            {weekOrderableDays.length ? `(${weekOrderableDays.filter(isDayComplete).length}/${weekOrderableDays.length} days)` : ""}
           </div>
         )}
       </div>
 
-      <Tabs
-        value={activeTab}
-        onValueChange={(v) => attemptNav(() => setActiveTab(v as typeof activeTab))}
-      >
+      <Tabs value={activeTab} onValueChange={(v) => attemptNav(() => setActiveTab(v as typeof activeTab))}>
         <TabsList className="mb-4">
           <TabsTrigger value="weekly">Weekly View</TabsTrigger>
           <TabsTrigger value="calendar">Calendar View</TabsTrigger>
@@ -558,24 +702,26 @@ export default function PupilLunchOrdersPage() {
             </div>
           )}
 
-          {/* FULL WIDTH cards on laptop/desktop: ONE COLUMN */}
           <div className="grid gap-4 grid-cols-1">
             {weekdays.map((date) => {
               const dateStr = format(date, DATE_FMT);
               const isOrderable = orderableDays.has(dateStr);
               const isHoliday = holidayDays.has(dateStr);
               const isPastDay = isBefore(startOfDay(date), today);
-              const locked = !isOrderable || isPastDay;
-              const holidayClass = isHoliday ? "ring-1 ring-rose-200 bg-rose-50" : "";
+              const cutoffLocked = isPastThursdayCutoffForDate(date);
+
+              const locked = !isOrderable || isPastDay || cutoffLocked;
 
               return (
                 <div
                   key={dateStr}
-                  className={`${locked ? "opacity-60 pointer-events-none select-none" : ""} ${holidayClass} rounded-xl`}
+                  className={[locked ? "opacity-70" : "", isHoliday ? "bg-rose-50" : ""].join(" ")}
                   title={
                     locked
                       ? isPastDay
                         ? "Past day"
+                        : cutoffLocked
+                        ? "Ordering closed (Thursday cutoff)"
                         : isHoliday
                         ? "School holiday"
                         : "Not in term"
@@ -584,11 +730,12 @@ export default function PupilLunchOrdersPage() {
                 >
                   <WeeklyDayCard
                     date={date}
-                    className="w-full"
+                    className={["w-full", isHoliday ? "ring-1 ring-rose-200" : ""].join(" ")}
                     selections={selections}
                     mealGroups={mealGroups}
                     onSelect={makeSafeOnSelect(locked)}
                     onUpdateConfig={makeSafeOnUpdate(locked)}
+                    onConfirmChoice={makeSafeOnConfirm(locked)}
                     onReplicate={(d, type) => handleReplicateGuarded(d, type)}
                     daysToCopy={daysToCopy[dateStr] ?? 3}
                     setDaysToCopy={(n) => setDaysToCopy((prev) => ({ ...prev, [dateStr]: n }))}
@@ -636,34 +783,15 @@ export default function PupilLunchOrdersPage() {
                   key={dateStr}
                   className={[
                     "h-24 rounded flex flex-col items-start justify-between p-1 relative transition",
-                    isOverflow
-                      ? "bg-gray-100 text-gray-400"
-                      : isHoliday
-                      ? "bg-rose-50 ring-1 ring-rose-200"
-                      : "bg-white",
+                    isOverflow ? "bg-gray-100 text-gray-400" : isHoliday ? "bg-rose-50 ring-1 ring-rose-200" : "bg-white",
                     !locked && hasSelection ? "cursor-pointer hover:ring-2 hover:ring-blue-300" : "",
-                    locked && !isOverflow ? "opacity-60 pointer-events-none" : "",
+                    locked && !isOverflow ? "opacity-60" : "",
                   ].join(" ")}
                   onClick={() => !locked && setModalDay(dateStr)}
-                  title={
-                    isOverflow
-                      ? undefined
-                      : isHoliday
-                      ? "School holiday"
-                      : locked
-                      ? isPastDay
-                        ? "Past day"
-                        : "Not in term"
-                      : hasSelection
-                      ? "Tap to view or edit order"
-                      : undefined
-                  }
                 >
                   <span className="text-xs">{format(date, "d")}</span>
 
-                  <div className="mt-auto mb-1 w-full sm:hidden">
-                    {hasSelection && <span className="inline-block h-2 w-2 rounded-full bg-green-500" />}
-                  </div>
+                  <div className="mt-auto mb-1 w-full sm:hidden">{hasSelection && <span className="inline-block h-2 w-2 rounded-full bg-green-500" />}</div>
 
                   <div className="hidden sm:flex flex-col gap-1 mt-auto mb-1 w-full">
                     {mealGroups.map((group) => {
@@ -692,23 +820,23 @@ export default function PupilLunchOrdersPage() {
         </TabsContent>
       </Tabs>
 
-{modalDay && (
-  <DayEditModal
-    dateStr={modalDay}
-    mealGroups={mealGroups}
-    selections={selections as any}
-    onSelect={(d, g, choices) => {
-      if (!orderableDays.has(d)) return;
-      handleSelect(d, g, choices);
-    }}
-    onUpdateConfig={(d, g, choiceId, extras) => {
-      if (!orderableDays.has(d)) return;
-      handleUpdateConfig(d, g, choiceId, extras);
-    }}
-    onClose={() => setModalDay(null)}
-  />
-)}
-      {/* Guard: incomplete week + dirty */}
+      {modalDay && (
+        <DayEditModal
+          dateStr={modalDay}
+          mealGroups={mealGroups}
+          selections={selections as any}
+          onSelect={(d, g, choices) => {
+            if (!orderableDays.has(d)) return;
+            handleSelect(d, g, choices);
+          }}
+          onUpdateConfig={(d, g, choiceId, extras) => {
+            if (!orderableDays.has(d)) return;
+            handleUpdateConfig(d, g, choiceId, extras);
+          }}
+          onClose={() => setModalDay(null)}
+        />
+      )}
+
       <AlertDialog open={guardOpen} onOpenChange={setGuardOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -720,7 +848,6 @@ export default function PupilLunchOrdersPage() {
           <AlertDialogFooter>
             <AlertDialogCancel
               onClick={() => {
-                // Stay on page
                 pendingNavRef.current = null;
               }}
             >
@@ -729,7 +856,6 @@ export default function PupilLunchOrdersPage() {
 
             <AlertDialogAction
               onClick={() => {
-                // Cancel changes (revert) and proceed
                 setSelections(deepClone(lastLoadedSelectionsRef.current));
                 setDirty(false);
                 setGuardOpen(false);

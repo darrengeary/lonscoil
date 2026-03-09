@@ -32,6 +32,16 @@ enum PrintJobStatus {
   FAILED
 }
 
+enum PupilStatus {
+  REGISTERED
+  UNREGISTERED
+}
+
+enum AbsenceScope {
+  PUPIL
+  CLASSROOM
+}
+
 /// ------------------------------------------------------
 /// Auth Models
 /// ------------------------------------------------------
@@ -105,7 +115,7 @@ model User {
   // PARENT: Linked to pupils (children)
   pupils Pupil[] @relation("ParentChildren")
 
-  // Auth relations (for NextAuth or similar)
+  // Auth relations
   accounts Account[]
   sessions Session[]
 
@@ -121,11 +131,10 @@ model School {
   id   String @id @default(cuid())
   name String
 
-  /// ← All users in this school
-  users User[] @relation("UserToSchool")
-
+  users      User[] @relation("UserToSchool")
   classrooms Classroom[]
   schedules  Schedule[]
+  absences   Absence[]
 
   menuLinks MenuSchool[]
 }
@@ -143,36 +152,39 @@ model Classroom {
 
   totalPupils Int @default(0)
 
-  pupils Pupil[] @relation("ClassStudents")
-
-  // Many-to-many to teachers
-  teachers User[] @relation("TeachersClassrooms")
+  pupils   Pupil[]    @relation("ClassStudents")
+  teachers User[]     @relation("TeachersClassrooms")
+  absences Absence[]  @relation("AbsenceClassroom")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([schoolId])
 }
 
 model Pupil {
-  id     String @id @default(cuid())
+  id     String      @id @default(cuid())
   name   String
-  status String @default("UNREGISTERED")
+  status PupilStatus @default(UNREGISTERED)
 
   parentId String?
-  parent   User?   @relation("ParentChildren", fields: [parentId], references: [id])
+  parent   User? @relation("ParentChildren", fields: [parentId], references: [id])
 
   classroomId String
   classroom   Classroom @relation("ClassStudents", fields: [classroomId], references: [id])
 
-  orders LunchOrder[]
+  orders   LunchOrder[]
+  absences Absence[] @relation("AbsencePupil")
 
-  // Menu variant per pupil (diet menu)
   menuId String?
-  menu   Menu?   @relation(fields: [menuId], references: [id], onDelete: SetNull)
+  menu   Menu? @relation(fields: [menuId], references: [id], onDelete: SetNull)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
 
   @@index([menuId])
+  @@index([parentId])
+  @@index([classroomId])
 }
 
 /// ------------------------------------------------------
@@ -185,7 +197,7 @@ model MealGroup {
   maxSelections Int    @default(1)
 
   choices   MealChoice[]
-  menuLinks MenuMealGroup[] // <-- Opposite of MenuMealGroup.group
+  menuLinks MenuMealGroup[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -199,20 +211,14 @@ model MealChoice {
   group   MealGroup @relation(fields: [groupId], references: [id])
   groupId String
 
-  // Tags style allergens
   allergens Allergen[]
-
-  // Ingredients stay simple
   ingredients String[] @default([])
 
-  // Availability
   availStart DateTime?
   availEnd   DateTime?
 
-  // Active toggle
   active Boolean @default(true)
 
-  // Nutrition
   caloriesKcal Int?
   proteinG     Float?
   carbsG       Float?
@@ -224,7 +230,7 @@ model MealChoice {
 
   orderItems OrderItem[]
 
-  menuLinks MenuMealChoice[] // <-- Opposite of MenuMealChoice.choice
+  menuLinks MenuMealChoice[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
@@ -238,17 +244,16 @@ model Allergen {
 }
 
 /// ------------------------------------------------------
-/// Menus (variants like Standard / Gluten Free / Dairy Free)
+/// Menus
 /// ------------------------------------------------------
 
 model Menu {
   id     String  @id @default(cuid())
   name   String
-  slug   String  @unique @default(cuid())
   active Boolean @default(true)
 
   schoolLinks MenuSchool[]
-  pupils Pupil[]
+  pupils      Pupil[]
   groupLinks  MenuMealGroup[]
   choiceLinks MenuMealChoice[]
 
@@ -276,7 +281,6 @@ model MenuMealGroup {
   menuId  String
   groupId String
 
-  // Optional per-menu override (handy)
   maxSelectionsOverride Int?
 
   menu  Menu      @relation(fields: [menuId], references: [id], onDelete: Cascade)
@@ -333,7 +337,7 @@ model OrderItem {
 }
 
 /// ------------------------------------------------------
-/// Schedule (Term/Holiday)
+/// Schedule
 /// ------------------------------------------------------
 
 model Schedule {
@@ -353,6 +357,37 @@ model Schedule {
 }
 
 /// ------------------------------------------------------
+/// Absences
+/// ------------------------------------------------------
+
+model Absence {
+  id    String       @id @default(cuid())
+  name  String
+  scope AbsenceScope
+
+  startDate DateTime
+  endDate   DateTime
+
+  schoolId String
+  school   School @relation(fields: [schoolId], references: [id])
+
+  classroomId String?
+  classroom   Classroom? @relation("AbsenceClassroom", fields: [classroomId], references: [id], onDelete: Cascade)
+
+  pupilId String?
+  pupil   Pupil? @relation("AbsencePupil", fields: [pupilId], references: [id], onDelete: Cascade)
+
+  notes String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([schoolId, startDate])
+  @@index([classroomId, startDate])
+  @@index([pupilId, startDate])
+}
+
+/// ------------------------------------------------------
 /// Print Jobs
 /// ------------------------------------------------------
 
@@ -361,7 +396,7 @@ model PrintJob {
   createdAt DateTime @default(now())
 
   createdById String?
-  createdBy   User?   @relation("UserPrintJobs", fields: [createdById], references: [id], onDelete: SetNull)
+  createdBy   User? @relation("UserPrintJobs", fields: [createdById], references: [id], onDelete: SetNull)
 
   date        DateTime
   schoolId    String?
@@ -393,7 +428,7 @@ model PrintJobItem {
   pupilId   String
   pupilName String
   classroom String
-  mealType  String // "LUNCH" | "SNACK"
+  mealType  String
   choice    String
   extras    String[] @default([])
 

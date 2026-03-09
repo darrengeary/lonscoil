@@ -1,3 +1,4 @@
+//app/api/schools/[id]/route.ts
 import { auth } from "@/auth";
 import { prisma } from "@/lib/db";
 

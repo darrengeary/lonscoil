@@ -7,29 +7,19 @@ import { Input } from "@/components/ui/input";
 import { ChevronDown, ChevronRight, Pencil, Plus } from "lucide-react";
 import MealGroupManager, { MealGroup } from "@/components/supplier/MealGroupManager";
 
-type SchoolTag = { id: string; name: string };
+export type SchoolTag = { id: string; name: string };
 
-type MenuDTO = {
+export type MenuDTO = {
   id: string;
   name: string;
-  slug: string;
   active: boolean;
   schools: SchoolTag[];
 };
 
-type MenuSection = {
+export type MenuSection = {
   menu: MenuDTO;
   groups: MealGroup[];
 };
-
-function slugify(s: string) {
-  return (s ?? "")
-    .trim()
-    .toLowerCase()
-    .replace(/['"]/g, "")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/(^-|-$)/g, "");
-}
 
 function addTag<T extends { id: string }>(list: T[], v: T) {
   if (list.some((x) => x.id === v.id)) return list;
@@ -37,6 +27,20 @@ function addTag<T extends { id: string }>(list: T[], v: T) {
 }
 function removeTagById<T extends { id: string }>(list: T[], id: string) {
   return list.filter((x) => x.id !== id);
+}
+
+// stable tag color from id (no DB needed)
+function schoolTagClass(id: string) {
+  const n = Array.from(id).reduce((a, c) => a + c.charCodeAt(0), 0) % 6;
+  const styles = [
+    "bg-blue-100 text-blue-800 border-blue-200",
+    "bg-green-100 text-green-800 border-green-200",
+    "bg-purple-100 text-purple-800 border-purple-200",
+    "bg-amber-100 text-amber-900 border-amber-200",
+    "bg-pink-100 text-pink-800 border-pink-200",
+    "bg-teal-100 text-teal-800 border-teal-200",
+  ];
+  return styles[n];
 }
 
 export default function MenuManager({ initialSections }: { initialSections: MenuSection[] }) {
@@ -62,7 +66,6 @@ export default function MenuManager({ initialSections }: { initialSections: Menu
   const [editingMenuId, setEditingMenuId] = useState<string | null>(null);
 
   const [menuName, setMenuName] = useState("");
-  const [menuSlug, setMenuSlug] = useState("");
 
   const [selectedSchools, setSelectedSchools] = useState<SchoolTag[]>([]);
   const [schoolQuery, setSchoolQuery] = useState("");
@@ -73,9 +76,8 @@ export default function MenuManager({ initialSections }: { initialSections: Menu
 
   const canSave = useMemo(() => {
     const n = menuName.trim();
-    const s = (menuSlug.trim() || slugify(menuName)).trim();
-    return n.length >= 2 && s.length >= 2;
-  }, [menuName, menuSlug]);
+    return n.length >= 2;
+  }, [menuName]);
 
   const suggestedSchools = useMemo(() => {
     const q = schoolQuery.trim().toLowerCase();
@@ -91,7 +93,6 @@ export default function MenuManager({ initialSections }: { initialSections: Menu
   function openCreate() {
     setEditingMenuId(null);
     setMenuName("");
-    setMenuSlug("");
     setSelectedSchools([]);
     setSchoolQuery("");
     setSchoolSuggestOpen(false);
@@ -102,7 +103,6 @@ export default function MenuManager({ initialSections }: { initialSections: Menu
   function openEdit(menu: MenuDTO) {
     setEditingMenuId(menu.id);
     setMenuName(menu.name);
-    setMenuSlug(menu.slug);
     setSelectedSchools(menu.schools ?? []);
     setSchoolQuery("");
     setSchoolSuggestOpen(false);
@@ -119,13 +119,12 @@ export default function MenuManager({ initialSections }: { initialSections: Menu
     if (!canSave) return;
 
     const name = menuName.trim();
-    const slug = (menuSlug.trim() || slugify(menuName)).trim();
     const schoolIds = selectedSchools.map((s) => s.id);
 
     const res = await fetch("/api/menus", {
       method: isEdit ? "PUT" : "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(isEdit ? { id: editingMenuId, name, slug, schoolIds } : { name, slug, schoolIds }),
+      body: JSON.stringify(isEdit ? { id: editingMenuId, name, schoolIds } : { name, schoolIds }),
     });
 
     if (!res.ok) return;
@@ -167,29 +166,20 @@ export default function MenuManager({ initialSections }: { initialSections: Menu
                   ref={nameRef}
                   placeholder="e.g. Standard, Gluten Free"
                   value={menuName}
-                  onChange={(e) => {
-                    setMenuName(e.target.value);
-                    if (!isEdit) setMenuSlug("");
-                  }}
+                  onChange={(e) => setMenuName(e.target.value)}
                 />
               </div>
 
-              {/* Slug */}
-              <div className="space-y-1">
-                <div className="text-xs font-semibold text-gray-600">Slug</div>
-                <Input placeholder="e.g. gluten-free" value={menuSlug} onChange={(e) => setMenuSlug(e.target.value)} />
-                <div className="text-xs text-gray-500">
-                  Preview: <span className="font-mono">{(menuSlug.trim() || slugify(menuName)) || "—"}</span>
-                </div>
-              </div>
-
-              {/* Schools tag input (like Extras) */}
+              {/* Schools tag input */}
               <div className="space-y-2">
                 <div className="text-sm font-medium">Schools</div>
 
                 <div className="flex flex-wrap gap-2">
                   {selectedSchools.map((s) => (
-                    <span key={s.id} className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-3 py-1 text-sm">
+                    <span
+                      key={s.id}
+                      className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-3 py-1 text-sm"
+                    >
                       {s.name}
                       <button
                         type="button"
@@ -251,7 +241,7 @@ export default function MenuManager({ initialSections }: { initialSections: Menu
                 </div>
 
                 <div className="text-xs text-gray-500">
-                  If you leave this empty, you can treat the menu as “global” (available to all schools).
+                  If you leave this empty, the menu is <span className="font-semibold">GLOBAL</span> (available to all schools).
                 </div>
               </div>
 
@@ -273,19 +263,44 @@ export default function MenuManager({ initialSections }: { initialSections: Menu
       <div className="space-y-4">
         {sections.map((section) => {
           const isOpen = !!openMenuIds[section.menu.id];
+          const schools = section.menu.schools ?? [];
 
           return (
             <Card key={section.menu.id} className="bg-white rounded-2xl p-4 border">
               <div className="w-full flex items-center justify-between gap-3">
+                {/* Left group: chevron + name + tags */}
                 <button
                   type="button"
                   onClick={() => toggleMenu(section.menu.id)}
-                  className="flex items-center gap-2 min-w-0"
+                  className="flex items-center gap-2 min-w-0 flex-1"
                 >
-                  {isOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-                  <div className="text-lg font-semibold text-[#27364B] truncate">{section.menu.name}</div>
+                  {isOpen ? <ChevronDown className="h-4 w-4 shrink-0" /> : <ChevronRight className="h-4 w-4 shrink-0" />}
+
+                  <div className="text-lg font-semibold text-[#27364B] truncate">
+                    {section.menu.name}
+                  </div>
+
+                  {/* tags live between name and the right-side buttons */}
+                  <div className="hidden sm:flex items-center gap-2 ml-2 flex-wrap min-w-0">
+                    {schools.length === 0 ? (
+                      <span className="text-xs px-2 py-1 rounded-full border bg-slate-50 text-slate-700 shrink-0">
+                        GLOBAL
+                      </span>
+                    ) : (
+                      schools.map((s) => (
+                        <span
+                          key={s.id}
+                          className={`text-xs px-2 py-1 rounded-full border ${schoolTagClass(s.id)} shrink-0`}
+                          title={s.name}
+                        >
+                          {s.name}
+                        </span>
+                      ))
+                    )}
+                  </div>
                 </button>
 
+                {/* Right group: edit + count */}
                 <div className="flex items-center gap-2 shrink-0">
                   <Button
                     variant="outline"
@@ -308,11 +323,7 @@ export default function MenuManager({ initialSections }: { initialSections: Menu
 
               {isOpen && (
                 <div className="pt-4">
-                  {/* Each menu now owns its own add-group button inside MealGroupManager */}
-                  <MealGroupManager
-                    menuId={section.menu.id}
-                    initialGroups={section.groups}
-                  />
+                  <MealGroupManager menuId={section.menu.id} initialGroups={section.groups} />
                 </div>
               )}
             </Card>

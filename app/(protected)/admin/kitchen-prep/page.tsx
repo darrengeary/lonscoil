@@ -3,7 +3,6 @@
 import { useState, useEffect } from "react";
 import { format, parseISO } from "date-fns";
 import { Button } from "@/components/ui/button";
-import { Switch } from "@/components/ui/switch";
 import {
   Select,
   SelectContent,
@@ -23,6 +22,16 @@ import { cn } from "@/lib/utils";
 import { DashboardHeader } from "@/components/dashboard/header";
 
 type MealGroup = { id: string; name: string };
+type PrepView = "grouped" | "extras" | "student";
+
+type StudentPrepRow = {
+  pupilName: string;
+  classroom: string;
+  group: string;
+  choice: string;
+  extras: string[];
+  extrasSig: string;
+};
 
 function DatePicker({
   value,
@@ -33,7 +42,6 @@ function DatePicker({
 }) {
   const [open, setOpen] = useState(false);
 
-  // FIX: avoid Date("YYYY-MM-DD") UTC parsing off-by-one
   const selectedDate = value ? parseISO(value) : undefined;
 
   return (
@@ -66,8 +74,8 @@ function DatePicker({
 }
 
 export default function PrepListPage() {
-  // ---- state (ALL hooks at top) ----
   const todayStr = format(new Date(), "yyyy-MM-dd");
+
   const [date, setDate] = useState(todayStr);
 
   const [schools, setSchools] = useState<{ id: string; name: string }[]>([]);
@@ -79,17 +87,16 @@ export default function PrepListPage() {
   const [mealGroups, setMealGroups] = useState<MealGroup[]>([]);
   const [mealGroupId, setMealGroupId] = useState("all");
 
-  // grouped rows (meals)
+  const [view, setView] = useState<PrepView>("grouped");
+
   const [rows, setRows] = useState<PrepSummaryRow[]>([]);
-  // split rows (meals-by-combo)
   const [splitRows, setSplitRows] = useState<PrepSplitRow[]>([]);
   const [extrasTotals, setExtrasTotals] = useState<ExtrasTotalRow[]>([]);
-
-  const [splitByExtras, setSplitByExtras] = useState(false);
+  const [studentRows, setStudentRows] = useState<StudentPrepRow[]>([]);
 
   const [printing, setPrinting] = useState(false);
 
-  // ---- initial data fetch (schools + meal groups) ----
+  // ---- initial data fetch ----
   useEffect(() => {
     fetch("/api/schools")
       .then((res) => res.json())
@@ -107,7 +114,7 @@ export default function PrepListPage() {
       .catch(() => setMealGroups([{ id: "all", name: "All Meal Groups" }]));
   }, []);
 
-  // ---- classrooms fetch (depends on schoolId) ----
+  // ---- classrooms fetch ----
   useEffect(() => {
     if (schoolId === "all") {
       setClassrooms([]);
@@ -124,40 +131,47 @@ export default function PrepListPage() {
   }, [schoolId]);
 
   // ---- main data fetch ----
-  const fetchData = () => {
-    let url = `/api/kitchen-prep?date=${date}`;
+  useEffect(() => {
+    const controller = new AbortController();
+
+    let url = `/api/kitchen-prep?date=${date}&view=${view}`;
     if (schoolId && schoolId !== "all") url += `&schoolId=${schoolId}`;
     if (classroomId && classroomId !== "all") url += `&classroomId=${classroomId}`;
     if (mealGroupId && mealGroupId !== "all") url += `&mealGroupId=${mealGroupId}`;
 
-    // IMPORTANT: only request split data when needed
-    if (splitByExtras) url += `&splitByExtras=1`;
-
-    fetch(url)
-      .then((res) => res.json())
+    fetch(url, { signal: controller.signal })
+      .then(async (res) => {
+        if (!res.ok) {
+          throw new Error(await res.text());
+        }
+        return res.json();
+      })
       .then((data) => {
         const meals = [...(data.meals ?? [])].sort(
           (a: any, b: any) => (b.count ?? 0) - (a.count ?? 0)
         );
-        setRows(meals);
-
         const splits = [...(data.splitMeals ?? [])].sort(
           (a: any, b: any) => (b.count ?? 0) - (a.count ?? 0)
         );
-        setSplitRows(splits);
+        const students = [...(data.studentRows ?? [])];
 
+        setRows(meals);
+        setSplitRows(splits);
         setExtrasTotals(data.extrasTotals ?? []);
+        setStudentRows(students);
       })
-      .catch(() => {
+      .catch((err) => {
+        if (err?.name === "AbortError") return;
+        console.error(err);
         setRows([]);
         setSplitRows([]);
         setExtrasTotals([]);
+        setStudentRows([]);
       });
-  };
 
-  useEffect(fetchData, [date, schoolId, classroomId, mealGroupId, splitByExtras]);
+    return () => controller.abort();
+  }, [date, schoolId, classroomId, mealGroupId, view]);
 
-  // ---- actions ----
   const handlePrint = () => window.print();
 
   async function createPrintJob(): Promise<{ id: string; totalLabels: number }> {
@@ -166,83 +180,91 @@ export default function PrepListPage() {
     if (classroomId && classroomId !== "all") url += `&classroomId=${classroomId}`;
     if (mealGroupId && mealGroupId !== "all") url += `&mealGroupId=${mealGroupId}`;
 
-    // Optional: if backend supports generating different label sets by split mode
-    url += `&splitByExtras=${splitByExtras ? "1" : "0"}`;
+    // For labels, student mode usually still means regular labels.
+    // If your backend supports student mode for print jobs, change this.
+    const labelView = view === "student" ? "grouped" : view;
+    url += `&view=${labelView}`;
 
     const res = await fetch(url, { method: "POST" });
     if (!res.ok) throw new Error(await res.text());
     return (await res.json()) as { id: string; totalLabels: number };
   }
 
-async function handlePrintStickersAll() {
-  try {
-    setPrinting(true);
+  async function handlePrintStickersAll() {
+    try {
+      setPrinting(true);
 
-    const job = await createPrintJob();
+      const job = await createPrintJob();
 
-    if (!job.totalLabels || job.totalLabels <= 0) {
-      alert("No labels to print for this date/filter.");
-      return;
+      if (!job.totalLabels || job.totalLabels <= 0) {
+        alert("No labels to print for this date/filter.");
+        return;
+      }
+
+      const res = await fetch(`/api/print-jobs/${job.id}/zpl?from=1&limit=${job.totalLabels}`, {
+        method: "GET",
+        cache: "no-store",
+      });
+
+      const contentType = res.headers.get("content-type") ?? "";
+
+      if (!res.ok) {
+        const text = await res.text();
+        console.error("ZPL fetch failed", res.status, text);
+        alert(`ZPL fetch failed: ${res.status}`);
+        return;
+      }
+
+      const zpl = await res.text();
+
+      if (!zpl.trim()) {
+        console.error("ZPL is empty", { jobId: job.id, totalLabels: job.totalLabels });
+        alert("ZPL is empty (no items or server returned empty). Check console.");
+        return;
+      }
+
+      if (contentType.includes("text/html")) {
+        console.error("Got HTML instead of ZPL (likely auth redirect)", zpl.slice(0, 300));
+        alert("Got HTML instead of ZPL (likely auth issue). Check console.");
+        return;
+      }
+
+      const blob = new Blob([zpl], { type: "text/plain;charset=utf-8" });
+      const blobUrl = URL.createObjectURL(blob);
+
+      const a = document.createElement("a");
+      a.href = blobUrl;
+      a.download = `printjob_${job.id}_ALL_${job.totalLabels}labels.zpl`;
+      a.style.display = "none";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 2000);
+    } catch (e: any) {
+      console.error(e);
+      alert(e?.message ?? "Sticker print failed");
+    } finally {
+      setPrinting(false);
     }
-
-    const res = await fetch(`/api/print-jobs/${job.id}/zpl?from=1&limit=${job.totalLabels}`, {
-      method: "GET",
-      cache: "no-store",
-    });
-
-    // If auth redirects, Next often returns HTML.
-    const contentType = res.headers.get("content-type") ?? "";
-    if (!res.ok) {
-      const text = await res.text();
-      console.error("ZPL fetch failed", res.status, text);
-      alert(`ZPL fetch failed: ${res.status}`);
-      return;
-    }
-
-    const zpl = await res.text();
-
-    // Hard sanity checks
-    if (!zpl.trim()) {
-      console.error("ZPL is empty", { jobId: job.id, totalLabels: job.totalLabels });
-      alert("ZPL is empty (no items or server returned empty). Check console.");
-      return;
-    }
-    if (contentType.includes("text/html")) {
-      console.error("Got HTML instead of ZPL (likely auth redirect)", zpl.slice(0, 300));
-      alert("Got HTML instead of ZPL (likely auth issue). Check console.");
-      return;
-    }
-
-    const blob = new Blob([zpl], { type: "text/plain;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `printjob_${job.id}_ALL_${job.totalLabels}labels.zpl`;
-    a.style.display = "none";
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-
-    // IMPORTANT: revoke later (Chrome needs time)
-    setTimeout(() => URL.revokeObjectURL(url), 2000);
-  } catch (e: any) {
-    console.error(e);
-    alert(e?.message ?? "Sticker print failed");
-  } finally {
-    setPrinting(false);
   }
-}
 
-  // Totals shown in pills:
-  // - grouped mode: sum rows.count
-  // - split mode: sum splitRows.count (should match grouped totals now)
   const totalMeals =
-    splitByExtras
+    view === "student"
+      ? studentRows.length
+      : view === "extras"
       ? splitRows.reduce((sum, r) => sum + (r.count ?? 0), 0)
       : rows.reduce((sum, r) => sum + (r.count ?? 0), 0);
 
-  const uniqueChoices = splitByExtras ? splitRows.length : rows.length;
+  const secondaryLabel =
+    view === "student"
+      ? "Students Listed"
+      : view === "extras"
+      ? "Unique Choice Combos"
+      : "Unique Choices";
+
+  const secondaryValue =
+    view === "student" ? studentRows.length : view === "extras" ? splitRows.length : rows.length;
 
   return (
     <div className="bg-[#F4F7FA] p-6 space-y-6">
@@ -307,13 +329,17 @@ async function handlePrintStickersAll() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-1">Split by extras</label>
-            <div className="flex items-center gap-3 h-10">
-              <Switch checked={splitByExtras} onCheckedChange={setSplitByExtras} />
-              <span className="text-sm text-muted-foreground">
-                {splitByExtras ? "On" : "Off"}
-              </span>
-            </div>
+            <label className="block text-sm font-medium mb-1">View</label>
+            <Select value={view} onValueChange={(v: PrepView) => setView(v)}>
+              <SelectTrigger className="w-48">
+                <SelectValue placeholder="Select View" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="grouped">Grouped</SelectItem>
+                <SelectItem value="extras">Split by extras</SelectItem>
+                <SelectItem value="student">By student</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
           <Button type="button" onClick={handlePrint} className="gap-2">
@@ -326,7 +352,7 @@ async function handlePrintStickersAll() {
             disabled={printing}
             className="gap-2"
           >
-            <Printer size={18} /> {printing ? " " + "Preparing…" : " " + " Print Stickers"}
+            <Printer size={18} /> {printing ? " Preparing…" : " Print Stickers"}
           </Button>
         </div>
 
@@ -336,17 +362,44 @@ async function handlePrintStickersAll() {
             Total Meals: <span className="ml-2 text-[#27364B] font-bold">{totalMeals}</span>
           </div>
           <div className="px-4 py-2 rounded-full bg-[#E7F1FA] text-[#4C9EEB] font-semibold text-base flex items-center">
-            Unique Choices:{" "}
-            <span className="ml-2 text-[#27364B] font-bold">{uniqueChoices}</span>
+            {secondaryLabel}:{" "}
+            <span className="ml-2 text-[#27364B] font-bold">{secondaryValue}</span>
           </div>
         </div>
 
-        <PrepSummaryTable
-          rows={rows}
-          splitRows={splitRows}
-          extrasTotals={extrasTotals}
-          mode={splitByExtras ? "split" : "grouped"}
-        />
+        {view === "student" ? (
+          <div className="bg-white rounded-2xl p-4 shadow-sm overflow-x-auto">
+            <table className="w-full border-collapse text-sm">
+              <thead>
+                <tr className="border-b">
+                  <th className="text-left p-3">Student</th>
+                  <th className="text-left p-3">Classroom</th>
+                  <th className="text-left p-3">Meal Group</th>
+                  <th className="text-left p-3">Choice</th>
+                  <th className="text-left p-3">Extras</th>
+                </tr>
+              </thead>
+              <tbody>
+                {studentRows.map((row, i) => (
+                  <tr key={i} className="border-b last:border-0">
+                    <td className="p-3">{row.pupilName}</td>
+                    <td className="p-3">{row.classroom}</td>
+                    <td className="p-3">{row.group}</td>
+                    <td className="p-3">{row.choice}</td>
+                    <td className="p-3">{row.extrasSig}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <PrepSummaryTable
+            rows={rows}
+            splitRows={splitRows}
+            extrasTotals={extrasTotals}
+            mode={view === "extras" ? "split" : "grouped"}
+          />
+        )}
       </div>
 
       {/* PRINT ONLY */}
@@ -355,6 +408,14 @@ async function handlePrintStickersAll() {
           <img src="/lunchlog.png" alt="LunchLog" style={{ height: 170, margin: "0 auto" }} />
           <div style={{ fontSize: 16, fontWeight: 600, margin: "12px 0 0 0" }}>
             Orders for: {date}
+          </div>
+          <div style={{ fontSize: 14, marginTop: 6 }}>
+            View:{" "}
+            {view === "grouped"
+              ? "Grouped"
+              : view === "extras"
+              ? "Split by extras"
+              : "By student"}
           </div>
         </div>
 
@@ -367,32 +428,64 @@ async function handlePrintStickersAll() {
           }}
         >
           <thead>
-            <tr>
-              <th style={{ border: "1px solid #000", padding: 8, textAlign: "left" }}>
-                Choice
-              </th>
-              <th style={{ border: "1px solid #000", padding: 8, textAlign: "left" }}>
-                Meal Group
-              </th>
-              <th style={{ border: "1px solid #000", padding: 8, textAlign: "right" }}>
-                Quantity
-              </th>
-            </tr>
+            {view === "student" ? (
+              <tr>
+                <th style={{ border: "1px solid #000", padding: 8, textAlign: "left" }}>
+                  Student
+                </th>
+                <th style={{ border: "1px solid #000", padding: 8, textAlign: "left" }}>
+                  Classroom
+                </th>
+                <th style={{ border: "1px solid #000", padding: 8, textAlign: "left" }}>
+                  Choice
+                </th>
+                <th style={{ border: "1px solid #000", padding: 8, textAlign: "left" }}>
+                  Meal Group
+                </th>
+                <th style={{ border: "1px solid #000", padding: 8, textAlign: "left" }}>
+                  Extras
+                </th>
+              </tr>
+            ) : (
+              <tr>
+                <th style={{ border: "1px solid #000", padding: 8, textAlign: "left" }}>
+                  Choice
+                </th>
+                <th style={{ border: "1px solid #000", padding: 8, textAlign: "left" }}>
+                  Meal Group
+                </th>
+                <th style={{ border: "1px solid #000", padding: 8, textAlign: "right" }}>
+                  Quantity
+                </th>
+              </tr>
+            )}
           </thead>
           <tbody>
-            {(splitByExtras ? splitRows : rows).map((row: any, i: number) => (
-              <tr key={i}>
-                <td style={{ border: "1px solid #000", padding: 8 }}>
-                  {"extrasSig" in row && row.extrasSig
-                    ? `${row.choice} — ${row.extrasSig}`
-                    : row.choice}
-                </td>
-                <td style={{ border: "1px solid #000", padding: 8 }}>{row.group}</td>
-                <td style={{ border: "1px solid #000", padding: 8, textAlign: "right" }}>
-                  {row.count}
-                </td>
-              </tr>
-            ))}
+            {view === "student"
+              ? studentRows.map((row, i) => (
+                  <tr key={i}>
+                    <td style={{ border: "1px solid #000", padding: 8 }}>{row.pupilName}</td>
+                    <td style={{ border: "1px solid #000", padding: 8 }}>{row.classroom}</td>
+                    <td style={{ border: "1px solid #000", padding: 8 }}>{row.choice}</td>
+                    <td style={{ border: "1px solid #000", padding: 8 }}>{row.group}</td>
+                    <td style={{ border: "1px solid #000", padding: 8 }}>{row.extrasSig}</td>
+                  </tr>
+                ))
+              : (view === "extras" ? splitRows : rows).map((row: any, i: number) => (
+                  <tr key={i}>
+                    <td style={{ border: "1px solid #000", padding: 8 }}>
+                      {"extrasSig" in row && row.extrasSig
+                        ? `${row.choice} — ${row.extrasSig}`
+                        : row.choice}
+                    </td>
+                    <td style={{ border: "1px solid #000", padding: 8 }}>{row.group}</td>
+                    <td
+                      style={{ border: "1px solid #000", padding: 8, textAlign: "right" }}
+                    >
+                      {row.count}
+                    </td>
+                  </tr>
+                ))}
           </tbody>
         </table>
       </div>

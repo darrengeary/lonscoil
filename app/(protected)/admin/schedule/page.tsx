@@ -24,18 +24,8 @@ import {
   SelectContent,
   SelectItem,
 } from "@/components/ui/select";
-import {
-  Tabs,
-  TabsList,
-  TabsTrigger,
-  TabsContent,
-} from "@/components/ui/tabs";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri"];
 
@@ -47,8 +37,8 @@ type Schedule = {
   id: string;
   name: string;
   type: ScheduleType;
-  startDate: string; // ISO
-  endDate: string; // ISO
+  startDate: string;
+  endDate: string;
   schoolId: string;
   school?: { id: string; name: string };
 };
@@ -57,15 +47,15 @@ type ScheduleForm = {
   id?: string;
   name: string;
   type: ScheduleType;
-  startDate: string; // yyyy-MM-dd
-  endDate: string; // yyyy-MM-dd
+  startDate: string;
+  endDate: string;
 };
 
 function getCalendarDays(month: Date) {
   const start = startOfWeek(startOfMonth(month), { weekStartsOn: 1 });
   const end = endOfWeek(endOfMonth(month), { weekStartsOn: 1 });
   const allDays = eachDayOfInterval({ start, end });
-  return allDays.filter((d) => d.getDay() >= 1 && d.getDay() <= 5); // Mon-Fri only
+  return allDays.filter((d) => d.getDay() >= 1 && d.getDay() <= 5);
 }
 
 export default function AdminSchedulesPage() {
@@ -81,20 +71,17 @@ export default function AdminSchedulesPage() {
   const [calendarMonth, setCalendarMonth] = useState(new Date());
   const calendarDays = useMemo(() => getCalendarDays(calendarMonth), [calendarMonth]);
 
-  // Day details modal
   const [dayModalOpen, setDayModalOpen] = useState(false);
   const [dayModalData, setDayModalData] = useState<{ date: Date | null; events: Schedule[] }>({
     date: null,
     events: [],
   });
 
-  // Create/Edit modal
   const [editOpen, setEditOpen] = useState(false);
   const [editing, setEditing] = useState<ScheduleForm | null>(null);
 
   const canWrite = schoolId !== "all";
 
-  // Fetch schools on mount
   useEffect(() => {
     fetch("/api/schools")
       .then((res) => res.json())
@@ -114,13 +101,11 @@ export default function AdminSchedulesPage() {
     }
   }
 
-  // Fetch schedules whenever schoolId changes
   useEffect(() => {
     refreshSchedules();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [schoolId]);
 
-  // Build date -> events map (all events on that day)
   const eventsByDate: Record<string, Schedule[]> = useMemo(() => {
     const map: Record<string, Schedule[]> = {};
     for (const s of schedules) {
@@ -136,7 +121,6 @@ export default function AdminSchedulesPage() {
     return map;
   }, [schedules]);
 
-  // For each day, per school keep highest priority (HOLIDAY > TERM)
   function getFilteredEvents(events: Schedule[]): Schedule[] {
     const perSchool: Record<string, Schedule> = {};
     for (const ev of events) {
@@ -219,7 +203,6 @@ export default function AdminSchedulesPage() {
     }
 
     await refreshSchedules();
-    // If they deleted from day modal, keep UI sane
     if (dayModalOpen && dayModalData.date) openDayModal(dayModalData.date);
   }
 
@@ -280,7 +263,6 @@ export default function AdminSchedulesPage() {
           <TabsTrigger value="list">List View</TabsTrigger>
         </TabsList>
 
-        {/* ---- CALENDAR TAB ---- */}
         <TabsContent value="calendar">
           <Card className="p-4">
             <div className="flex items-center justify-between mb-2">
@@ -293,7 +275,6 @@ export default function AdminSchedulesPage() {
               </Button>
             </div>
 
-            {/* Legend */}
             <div className="flex items-center gap-4 mb-3">
               <span className="inline-flex items-center">
                 <span className="inline-block w-3 h-3 rounded-full bg-green-500 mr-1" />
@@ -340,7 +321,6 @@ export default function AdminSchedulesPage() {
                   >
                     <span className="text-xs">{format(date, "d")}</span>
 
-                    {/* One dot per school (color by event type) */}
                     <div className="flex flex-row gap-[2px] mt-auto mb-1 flex-wrap">
                       {filteredEvents.map((e, idx) => (
                         <span
@@ -362,185 +342,16 @@ export default function AdminSchedulesPage() {
               })}
             </div>
           </Card>
-
-          {/* Day details modal */}
-          <Dialog open={dayModalOpen} onOpenChange={setDayModalOpen}>
-            <DialogContent className="bg-white shadow-xl rounded-2xl">
-              <DialogHeader>
-                <DialogTitle>
-                  {dayModalData.date ? format(dayModalData.date, "EEEE, d MMMM yyyy") : ""}
-                </DialogTitle>
-              </DialogHeader>
-
-              <div>
-                {getFilteredEvents(dayModalData.events).length === 0 && (
-                  <div className="text-sm text-muted-foreground">
-                    No events for this day.
-                    {canWrite && dayModalData.date && (
-                      <div className="mt-3">
-                        <Button onClick={() => openCreate(dayModalData.date!)}>+ Create period</Button>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {getFilteredEvents(dayModalData.events).length > 0 && (
-                  <div className="space-y-4">
-                    {getFilteredEvents(dayModalData.events)
-                      .sort((a, b) => (a.school?.name || "").localeCompare(b.school?.name || ""))
-                      .map((e) => (
-                        <div
-                          key={e.id}
-                          className="border-l-4 pl-2"
-                          style={{
-                            borderColor: e.type === "HOLIDAY" ? "#ef4444" : "#22c55e",
-                          }}
-                        >
-                          <div className="font-semibold">{e.school?.name ?? "-"}</div>
-
-                          <div className="text-xs mb-1">
-                            <span
-                              className={
-                                "inline-block px-2 py-0.5 rounded-full font-bold text-[11px] mr-1 " +
-                                (e.type === "HOLIDAY"
-                                  ? "bg-red-100 text-red-600"
-                                  : "bg-green-100 text-green-700")
-                              }
-                            >
-                              {e.type === "HOLIDAY" ? "Holiday" : "Term"}
-                            </span>
-                            <span>{e.name}</span>
-                          </div>
-
-                          <div className="text-xs text-muted-foreground">
-                            {format(new Date(e.startDate), "d MMM yyyy")} –{" "}
-                            {format(new Date(e.endDate), "d MMM yyyy")}
-                          </div>
-
-                          {canWrite && (
-                            <div className="mt-2 flex gap-2">
-                              <Button variant="outline" size="sm" onClick={() => openEditFromEvent(e)}>
-                                Edit
-                              </Button>
-                              <Button variant="destructive" size="sm" onClick={() => deleteSchedule(e.id)}>
-                                Delete
-                              </Button>
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                  </div>
-                )}
-              </div>
-            </DialogContent>
-          </Dialog>
-
-          {/* Create/Edit modal */}
-          <Dialog
-            open={editOpen}
-            onOpenChange={(v) => {
-              setEditOpen(v);
-              if (!v) setEditing(null);
-            }}
-          >
-            <DialogContent className="bg-white shadow-xl rounded-2xl">
-              <DialogHeader>
-                <DialogTitle>{editing?.id ? "Edit Period" : "New Period"}</DialogTitle>
-              </DialogHeader>
-
-              {editing && (
-                <form
-                  className="space-y-4"
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    const data = Object.fromEntries(new FormData(e.currentTarget));
-                    saveSchedule({
-                      id: editing.id,
-                      name: String(data.name ?? ""),
-                      type: data.type as ScheduleType,
-                      startDate: String(data.startDate ?? ""),
-                      endDate: String(data.endDate ?? ""),
-                    });
-                  }}
-                >
-                  <div>
-                    <label className="block mb-1 text-sm font-medium">Name</label>
-                    <input
-                      name="name"
-                      defaultValue={editing.name}
-                      required
-                      className="w-full border rounded p-2"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block mb-1 text-sm font-medium">Type</label>
-                    <select
-                      name="type"
-                      defaultValue={editing.type}
-                      className="w-full border rounded p-2"
-                    >
-                      <option value="TERM">School Term</option>
-                      <option value="HOLIDAY">Holiday</option>
-                    </select>
-                  </div>
-
-                  <div className="flex gap-2">
-                    <div className="flex-1">
-                      <label className="block mb-1 text-sm font-medium">Start Date</label>
-                      <input
-                        type="date"
-                        name="startDate"
-                        defaultValue={editing.startDate}
-                        required
-                        className="w-full border rounded p-2"
-                      />
-                    </div>
-
-                    <div className="flex-1">
-                      <label className="block mb-1 text-sm font-medium">End Date</label>
-                      <input
-                        type="date"
-                        name="endDate"
-                        defaultValue={editing.endDate}
-                        required
-                        className="w-full border rounded p-2"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="flex justify-end gap-2 pt-2">
-                    <Button type="submit">{editing.id ? "Update" : "Create"}</Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => {
-                        setEditOpen(false);
-                        setEditing(null);
-                      }}
-                    >
-                      Cancel
-                    </Button>
-                  </div>
-                </form>
-              )}
-            </DialogContent>
-          </Dialog>
         </TabsContent>
 
-        {/* ---- LIST TAB ---- */}
         <TabsContent value="list">
           {loading && <div className="text-sm text-muted-foreground mb-2">Loading…</div>}
 
-          {/* Mobile Card/List */}
           <div className="block md:hidden space-y-3 mt-2">
             {schedules.map((sch) => (
-              <div
-                key={sch.id}
-                className="bg-white rounded-2xl shadow-sm p-4 flex flex-col gap-2"
-              >
+              <div key={sch.id} className="bg-white rounded-2xl shadow-sm p-4 flex flex-col gap-2">
                 <div className="flex justify-between items-center">
-                  <span className="font-bold text-[#27364B]">{sch.school?.name ?? "-"}</span>
+                  <span className="font-bold text-[#27364B]">{sch.name}</span>
                   <span
                     className={
                       "inline-block px-3 py-1 rounded-full font-bold text-xs " +
@@ -549,9 +360,11 @@ export default function AdminSchedulesPage() {
                         : "bg-[#E7F8F0] text-[#16A34A]")
                     }
                   >
-                    {sch.name}
+                    {sch.type === "HOLIDAY" ? "Holiday" : "Term"}
                   </span>
                 </div>
+
+                <div className="text-sm text-muted-foreground">{sch.school?.name ?? "-"}</div>
 
                 <div className="flex gap-2 justify-end">
                   <span className="inline-block px-4 py-1 rounded-full bg-[#F4F7FA] text-[#27364B] text-xs font-semibold">
@@ -574,12 +387,14 @@ export default function AdminSchedulesPage() {
             ))}
           </div>
 
-          {/* Desktop Table */}
           <div className="hidden md:block overflow-x-auto rounded-2xl shadow-sm bg-white">
-            <table className="min-w-[400px] w-full text-sm text-left rounded-2xl overflow-hidden">
+            <table className="min-w-[500px] w-full text-sm text-left rounded-2xl overflow-hidden">
               <thead>
                 <tr className="bg-[#F4F7FA]">
                   <th className="py-3 px-4 text-left text-base font-semibold text-[#27364B] rounded-tl-2xl">
+                    Schedule Name
+                  </th>
+                  <th className="py-3 px-4 text-left text-base font-semibold text-[#27364B]">
                     School
                   </th>
                   <th className="py-3 px-4 text-left text-base font-semibold text-[#27364B]">
@@ -599,9 +414,8 @@ export default function AdminSchedulesPage() {
                     key={sch.id}
                     className="transition-colors hover:bg-[#E7F1FA] focus-within:bg-[#E7F8F0] bg-white"
                   >
-                    <td className="py-3 px-4 text-[#27364B] font-medium">
-                      {sch.school?.name ?? "-"}
-                    </td>
+                    <td className="py-3 px-4 text-[#27364B] font-medium">{sch.name}</td>
+                    <td className="py-3 px-4 text-[#27364B]">{sch.school?.name ?? "-"}</td>
                     <td className="py-3 px-4">
                       <span
                         className={
@@ -639,7 +453,7 @@ export default function AdminSchedulesPage() {
 
                 {schedules.length === 0 && (
                   <tr>
-                    <td className="py-6 px-4 text-muted-foreground" colSpan={4}>
+                    <td className="py-6 px-4 text-muted-foreground" colSpan={5}>
                       No schedules found.
                     </td>
                   </tr>
@@ -649,6 +463,166 @@ export default function AdminSchedulesPage() {
           </div>
         </TabsContent>
       </Tabs>
+
+      {/* Day details modal */}
+      <Dialog open={dayModalOpen} onOpenChange={setDayModalOpen}>
+        <DialogContent className="bg-white shadow-xl rounded-2xl">
+          <DialogHeader>
+            <DialogTitle>
+              {dayModalData.date ? format(dayModalData.date, "EEEE, d MMMM yyyy") : ""}
+            </DialogTitle>
+          </DialogHeader>
+
+          <div>
+            {getFilteredEvents(dayModalData.events).length === 0 && (
+              <div className="text-sm text-muted-foreground">
+                No events for this day.
+                {canWrite && dayModalData.date && (
+                  <div className="mt-3">
+                    <Button onClick={() => openCreate(dayModalData.date!)}>+ Create period</Button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {getFilteredEvents(dayModalData.events).length > 0 && (
+              <div className="space-y-4">
+                {getFilteredEvents(dayModalData.events)
+                  .sort((a, b) => (a.school?.name || "").localeCompare(b.school?.name || ""))
+                  .map((e) => (
+                    <div
+                      key={e.id}
+                      className="border-l-4 pl-2"
+                      style={{
+                        borderColor: e.type === "HOLIDAY" ? "#ef4444" : "#22c55e",
+                      }}
+                    >
+                      <div className="font-semibold">{e.school?.name ?? "-"}</div>
+
+                      <div className="text-xs mb-1">
+                        <span
+                          className={
+                            "inline-block px-2 py-0.5 rounded-full font-bold text-[11px] mr-1 " +
+                            (e.type === "HOLIDAY"
+                              ? "bg-red-100 text-red-600"
+                              : "bg-green-100 text-green-700")
+                          }
+                        >
+                          {e.type === "HOLIDAY" ? "Holiday" : "Term"}
+                        </span>
+                        <span>{e.name}</span>
+                      </div>
+
+                      <div className="text-xs text-muted-foreground">
+                        {format(new Date(e.startDate), "d MMM yyyy")} –{" "}
+                        {format(new Date(e.endDate), "d MMM yyyy")}
+                      </div>
+
+                      {canWrite && (
+                        <div className="mt-2 flex gap-2">
+                          <Button variant="outline" size="sm" onClick={() => openEditFromEvent(e)}>
+                            Edit
+                          </Button>
+                          <Button variant="destructive" size="sm" onClick={() => deleteSchedule(e.id)}>
+                            Delete
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Create/Edit modal */}
+      <Dialog
+        open={editOpen}
+        onOpenChange={(v) => {
+          setEditOpen(v);
+          if (!v) setEditing(null);
+        }}
+      >
+        <DialogContent className="bg-white shadow-xl rounded-2xl">
+          <DialogHeader>
+            <DialogTitle>{editing?.id ? "Edit Period" : "New Period"}</DialogTitle>
+          </DialogHeader>
+
+          {editing && (
+            <form
+              className="space-y-4"
+              onSubmit={(e) => {
+                e.preventDefault();
+                const data = Object.fromEntries(new FormData(e.currentTarget));
+                saveSchedule({
+                  id: editing.id,
+                  name: String(data.name ?? ""),
+                  type: data.type as ScheduleType,
+                  startDate: String(data.startDate ?? ""),
+                  endDate: String(data.endDate ?? ""),
+                });
+              }}
+            >
+              <div>
+                <label className="block mb-1 text-sm font-medium">Name</label>
+                <input
+                  name="name"
+                  defaultValue={editing.name}
+                  required
+                  className="w-full border rounded p-2"
+                />
+              </div>
+
+              <div>
+                <label className="block mb-1 text-sm font-medium">Type</label>
+                <select name="type" defaultValue={editing.type} className="w-full border rounded p-2">
+                  <option value="TERM">School Term</option>
+                  <option value="HOLIDAY">Holiday</option>
+                </select>
+              </div>
+
+              <div className="flex gap-2">
+                <div className="flex-1">
+                  <label className="block mb-1 text-sm font-medium">Start Date</label>
+                  <input
+                    type="date"
+                    name="startDate"
+                    defaultValue={editing.startDate}
+                    required
+                    className="w-full border rounded p-2"
+                  />
+                </div>
+
+                <div className="flex-1">
+                  <label className="block mb-1 text-sm font-medium">End Date</label>
+                  <input
+                    type="date"
+                    name="endDate"
+                    defaultValue={editing.endDate}
+                    required
+                    className="w-full border rounded p-2"
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <Button type="submit">{editing.id ? "Update" : "Create"}</Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setEditOpen(false);
+                    setEditing(null);
+                  }}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

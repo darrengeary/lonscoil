@@ -13,7 +13,7 @@ export const POST = auth(async (req) => {
 
   await prisma.pupil.updateMany({
     where: { id: { in: codes }, status: "UNREGISTERED" },
-    data: { parentId: user.id, status: "ACTIVE" },
+    data: { parentId: user.id, status: "REGISTERED" },
   });
 
   return new Response(null, { status: 204 });
