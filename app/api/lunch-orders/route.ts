@@ -108,7 +108,7 @@ export const PUT = auth(async (req) => {
                   selectedIngredients: i.selectedIngredients ?? [],
                 })),
               },
-            },
+            }
           });
         }
       }

@@ -152,9 +152,9 @@ model Classroom {
 
   totalPupils Int @default(0)
 
-  pupils   Pupil[]    @relation("ClassStudents")
-  teachers User[]     @relation("TeachersClassrooms")
-  absences Absence[]  @relation("AbsenceClassroom")
+  pupils   Pupil[]   @relation("ClassStudents")
+  teachers User[]    @relation("TeachersClassrooms")
+  absences Absence[] @relation("AbsenceClassroom")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -172,6 +172,10 @@ model Pupil {
 
   classroomId String
   classroom   Classroom @relation("ClassStudents", fields: [classroomId], references: [id])
+
+  // Parent-entered registration details
+  studentName String?
+  allergies   String[] @default([])
 
   orders   LunchOrder[]
   absences Absence[] @relation("AbsencePupil")
@@ -211,7 +215,7 @@ model MealChoice {
   group   MealGroup @relation(fields: [groupId], references: [id])
   groupId String
 
-  allergens Allergen[]
+  allergens   Allergen[]
   ingredients String[] @default([])
 
   availStart DateTime?
@@ -248,7 +252,7 @@ model Allergen {
 /// ------------------------------------------------------
 
 model Menu {
-  id     String  @id @default(cuid())
+  id     String @id @default(cuid())
   name   String
   active Boolean @default(true)
 
