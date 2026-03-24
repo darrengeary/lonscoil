@@ -1,5 +1,4 @@
 "use client";
-
 import React, { useEffect, useMemo, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -27,7 +26,7 @@ export interface MealChoice {
   allergens?: Allergen[];
   ingredients?: string[];
 
-  availStart?: string | null; // ISO from API
+  availStart?: string | null;
   availEnd?: string | null;
 
   caloriesKcal?: number | null;
@@ -41,8 +40,9 @@ export interface MealChoice {
 }
 
 interface Props {
-  menuId: string; // ✅ NEW
+  menuId: string;
   groupId: string;
+  mealOptionId?: string;
   initialChoices?: MealChoice[];
   disabled?: boolean;
 }
@@ -50,9 +50,12 @@ interface Props {
 const PLACEHOLDER_IMG = "/meal-placeholder.jpg";
 
 async function fetchMealChoices(menuId: string, groupId: string) {
-  const res = await fetch(`/api/meal-choices?menuId=${encodeURIComponent(menuId)}&groupId=${encodeURIComponent(groupId)}`, {
-    cache: "no-store",
-  });
+  const res = await fetch(
+    `/api/meal-choices?menuId=${encodeURIComponent(menuId)}&groupId=${encodeURIComponent(groupId)}`,
+    {
+      cache: "no-store",
+    }
+  );
   if (!res.ok) throw new Error(await res.text());
   return (await res.json()) as MealChoice[];
 }
@@ -88,7 +91,13 @@ async function updateMealChoice(payload: any) {
   return (await res.json()) as MealChoice;
 }
 
-async function createMealChoice(payload: { name: string; groupId: string; menuId: string; active?: boolean }) {
+async function createMealChoice(payload: {
+  name: string;
+  groupId: string;
+  menuId: string;
+  mealOptionId?: string;
+  active?: boolean;
+}) {
   const res = await fetch("/api/meal-choices", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -122,7 +131,6 @@ function removeTag(list: string[], v: string) {
   return list.filter((x) => x !== v);
 }
 
-/** IMPORTANT: keep outside ChoiceManager so it doesn't remount each render */
 function LabeledInput({
   label,
   value,
@@ -150,6 +158,7 @@ function LabeledInput({
 export default function ChoiceManager({
   menuId,
   groupId,
+  mealOptionId,
   initialChoices,
   disabled = false,
 }: Props) {
@@ -158,7 +167,6 @@ export default function ChoiceManager({
 
   const [allergenOptions, setAllergenOptions] = useState<Allergen[]>([]);
 
-  // ---------- modals ----------
   const [editOpen, setEditOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -168,7 +176,6 @@ export default function ChoiceManager({
     [choices, editingId]
   );
 
-  // ---------- EDIT state ----------
   const [editName, setEditName] = useState("");
   const [editActive, setEditActive] = useState(true);
   const [editFile, setEditFile] = useState<File | null>(null);
@@ -193,7 +200,6 @@ export default function ChoiceManager({
   const [editFibre, setEditFibre] = useState("");
   const [editSalt, setEditSalt] = useState("");
 
-  // ---------- ADD state ----------
   const [addName, setAddName] = useState("");
   const [addActive, setAddActive] = useState(false);
   const [addFile, setAddFile] = useState<File | null>(null);
@@ -218,7 +224,6 @@ export default function ChoiceManager({
   const [addFibre, setAddFibre] = useState("");
   const [addSalt, setAddSalt] = useState("");
 
-  // Load meal choices (menu-scoped)
   useEffect(() => {
     let cancelled = false;
 
@@ -233,7 +238,6 @@ export default function ChoiceManager({
     };
   }, [menuId, groupId]);
 
-  // Load allergens
   useEffect(() => {
     let cancelled = false;
 
@@ -248,7 +252,6 @@ export default function ChoiceManager({
     };
   }, []);
 
-  // Cleanup preview object URLs
   useEffect(() => {
     return () => {
       if (editPreviewUrl?.startsWith("blob:")) URL.revokeObjectURL(editPreviewUrl);
@@ -351,13 +354,10 @@ export default function ChoiceManager({
         name: editName.trim(),
         active: editActive,
         imageUrl,
-
         ingredients: editIngredients,
         availStart: editAvailStart ? editAvailStart.toISOString() : null,
         availEnd: editAvailEnd ? editAvailEnd.toISOString() : null,
-
         allergenIds: editAllergens.map((a) => a.id),
-
         caloriesKcal: safeNumOrNull(editCalories),
         proteinG: safeNumOrNull(editProtein),
         carbsG: safeNumOrNull(editCarbs),
@@ -384,8 +384,13 @@ export default function ChoiceManager({
     try {
       setBusyId("__add__");
 
-      // ✅ menu-scoped create (creates join row on server)
-      const created = await createMealChoice({ name, groupId, menuId, active: addActive });
+      const created = await createMealChoice({
+        name,
+        groupId,
+        menuId,
+        mealOptionId,
+        active: addActive,
+      });
 
       let updated = await updateMealChoice({
         id: created.id,
@@ -394,7 +399,6 @@ export default function ChoiceManager({
         availStart: addAvailStart ? addAvailStart.toISOString() : null,
         availEnd: addAvailEnd ? addAvailEnd.toISOString() : null,
         allergenIds: addAllergens.map((a) => a.id),
-
         caloriesKcal: safeNumOrNull(addCalories),
         proteinG: safeNumOrNull(addProtein),
         carbsG: safeNumOrNull(addCarbs),
@@ -429,7 +433,6 @@ export default function ChoiceManager({
 
   return (
     <div className="mt-2">
-      {/* List */}
       {choices.map((choice) => {
         const isBusy = busyId === choice.id;
         const isActive = choice.active === true;
@@ -441,7 +444,6 @@ export default function ChoiceManager({
           <div key={choice.id} className="flex items-center justify-between py-2 gap-3">
             <div className="flex items-center gap-3 min-w-0">
               <div className="h-12 w-12 rounded-xl overflow-hidden bg-gray-100 border shrink-0">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={src} alt={choice.name} className="h-full w-full object-cover" />
               </div>
 
@@ -478,10 +480,6 @@ export default function ChoiceManager({
         </Button>
       )}
 
-      {/* EDIT + ADD modals remain unchanged below... */}
-      {/* (keeping your existing modal code exactly as-is) */}
-
-      {/* EDIT MODAL */}
       <Dialog
         open={editOpen}
         onOpenChange={(open) => {
@@ -499,10 +497,8 @@ export default function ChoiceManager({
 
           {editingChoice && (
             <div className="space-y-4">
-              {/* HERO IMAGE */}
               <div className="w-full overflow-hidden rounded-2xl border bg-gray-100">
                 <div className="h-44 sm:h-52 w-full">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={editHeroSrc}
                     alt={editingChoice.name}
@@ -511,7 +507,6 @@ export default function ChoiceManager({
                 </div>
               </div>
 
-              {/* ACTIVE */}
               <Button
                 type="button"
                 className={`w-full rounded-2xl py-6 text-base font-semibold ${
@@ -533,7 +528,6 @@ export default function ChoiceManager({
                 )}
               </Button>
 
-              {/* Name */}
               <div className="space-y-2">
                 <div className="text-sm font-medium">Name</div>
                 <Input
@@ -543,7 +537,6 @@ export default function ChoiceManager({
                 />
               </div>
 
-              {/* Replace image */}
               <div className="space-y-2">
                 <div className="text-sm font-medium">Replace image</div>
                 <label className="inline-flex items-center gap-2 text-sm cursor-pointer text-blue-700">
@@ -557,8 +550,9 @@ export default function ChoiceManager({
                     onChange={(e) => {
                       const f = e.target.files?.[0] ?? null;
                       setEditFile(f);
-                      if (editPreviewUrl?.startsWith("blob:"))
+                      if (editPreviewUrl?.startsWith("blob:")) {
                         URL.revokeObjectURL(editPreviewUrl);
+                      }
                       setEditPreviewUrl(f ? URL.createObjectURL(f) : null);
                       e.currentTarget.value = "";
                     }}
@@ -566,7 +560,6 @@ export default function ChoiceManager({
                 </label>
               </div>
 
-              {/* Allergens */}
               <div className="space-y-2">
                 <div className="text-sm font-medium">Allergens</div>
 
@@ -605,9 +598,7 @@ export default function ChoiceManager({
                       {allergenOptions
                         .filter((a) =>
                           editAllergenQuery.trim()
-                            ? a.name
-                                .toLowerCase()
-                                .includes(editAllergenQuery.trim().toLowerCase())
+                            ? a.name.toLowerCase().includes(editAllergenQuery.trim().toLowerCase())
                             : true
                         )
                         .map((a) => {
@@ -642,7 +633,6 @@ export default function ChoiceManager({
                 </div>
               </div>
 
-              {/* Ingredients */}
               <div className="space-y-2">
                 <div className="text-sm font-medium">Extras</div>
 
@@ -681,7 +671,6 @@ export default function ChoiceManager({
                 />
               </div>
 
-              {/* Availability */}
               <div className="space-y-2">
                 <div className="text-sm font-medium">Availability</div>
 
@@ -712,7 +701,6 @@ export default function ChoiceManager({
                 </div>
               </div>
 
-              {/* Nutrition */}
               <div className="space-y-2">
                 <div className="text-sm font-medium">Nutrition (per portion)</div>
                 <div className="grid grid-cols-2 gap-3">
@@ -733,15 +721,16 @@ export default function ChoiceManager({
             <Button variant="outline" onClick={closeEdit}>
               Cancel
             </Button>
-            <Button onClick={saveEdit} disabled={!editingChoice || !editName.trim() || busyId === editingChoice.id}>
+            <Button
+              onClick={saveEdit}
+              disabled={!editingChoice || !editName.trim() || busyId === editingChoice.id}
+            >
               Save
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* ADD MODAL */}
-      {/* ADD MODAL */}
       <Dialog
         open={addOpen}
         onOpenChange={(open) => {
@@ -758,19 +747,18 @@ export default function ChoiceManager({
           </DialogHeader>
 
           <div className="space-y-4">
-            {/* HERO IMAGE */}
             <div className="w-full overflow-hidden rounded-2xl border bg-gray-100">
               <div className="h-44 sm:h-52 w-full">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={addHeroSrc} alt="New choice" className="h-full w-full object-cover" />
               </div>
             </div>
 
-            {/* ACTIVE */}
             <Button
               type="button"
               className={`w-full rounded-2xl py-6 text-base font-semibold ${
-                addActive ? "bg-green-600 hover:bg-green-700 text-white" : "bg-red-600 hover:bg-red-700 text-white"
+                addActive
+                  ? "bg-green-600 hover:bg-green-700 text-white"
+                  : "bg-red-600 hover:bg-red-700 text-white"
               }`}
               onClick={() => setAddActive((v) => !v)}
               disabled={busyId === "__add__"}
@@ -786,13 +774,11 @@ export default function ChoiceManager({
               )}
             </Button>
 
-            {/* Name */}
             <div className="space-y-2">
               <div className="text-sm font-medium">Name</div>
               <Input value={addName} onChange={(e) => setAddName(e.target.value)} placeholder="New choice name" />
             </div>
 
-            {/* Image */}
             <div className="space-y-2">
               <div className="text-sm font-medium">Image (optional)</div>
               <label className="inline-flex items-center gap-2 text-sm cursor-pointer text-blue-700">
@@ -814,7 +800,6 @@ export default function ChoiceManager({
               </label>
             </div>
 
-            {/* Allergens */}
             <div className="space-y-2">
               <div className="text-sm font-medium">Allergens</div>
 
@@ -881,7 +866,6 @@ export default function ChoiceManager({
               </div>
             </div>
 
-            {/* Extras (your code calls these ingredients) */}
             <div className="space-y-2">
               <div className="text-sm font-medium">Extras</div>
 
@@ -920,7 +904,6 @@ export default function ChoiceManager({
               />
             </div>
 
-            {/* Availability */}
             <div className="space-y-2">
               <div className="text-sm font-medium">Availability</div>
 
@@ -951,7 +934,6 @@ export default function ChoiceManager({
               </div>
             </div>
 
-            {/* Nutrition */}
             <div className="space-y-2">
               <div className="text-sm font-medium">Nutrition (per portion)</div>
               <div className="grid grid-cols-2 gap-3">

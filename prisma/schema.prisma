@@ -105,22 +105,17 @@ model User {
 
   printJobs PrintJob[] @relation("UserPrintJobs")
 
-  // SCHOOLADMIN: Assigned to a school
   schoolId String? @map("school_id")
   school   School? @relation("UserToSchool", fields: [schoolId], references: [id])
 
-  // TEACHER: Many-to-many with classrooms
   teachingClassrooms Classroom[] @relation("TeachersClassrooms")
+  pupils             Pupil[]     @relation("ParentChildren")
 
-  // PARENT: Linked to pupils (children)
-  pupils Pupil[] @relation("ParentChildren")
-
-  // Auth relations
   accounts Account[]
   sessions Session[]
 
   createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 }
 
 /// ------------------------------------------------------
@@ -131,7 +126,7 @@ model School {
   id   String @id @default(cuid())
   name String
 
-  users      User[] @relation("UserToSchool")
+  users      User[]      @relation("UserToSchool")
   classrooms Classroom[]
   schedules  Schedule[]
   absences   Absence[]
@@ -168,20 +163,19 @@ model Pupil {
   status PupilStatus @default(UNREGISTERED)
 
   parentId String?
-  parent   User? @relation("ParentChildren", fields: [parentId], references: [id])
+  parent   User?   @relation("ParentChildren", fields: [parentId], references: [id])
 
   classroomId String
   classroom   Classroom @relation("ClassStudents", fields: [classroomId], references: [id])
 
-  // Parent-entered registration details
   studentName String?
   allergies   String[] @default([])
 
   orders   LunchOrder[]
-  absences Absence[] @relation("AbsencePupil")
+  absences Absence[]    @relation("AbsencePupil")
 
   menuId String?
-  menu   Menu? @relation(fields: [menuId], references: [id], onDelete: SetNull)
+  menu   Menu?   @relation(fields: [menuId], references: [id], onDelete: SetNull)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
@@ -189,6 +183,7 @@ model Pupil {
   @@index([menuId])
   @@index([parentId])
   @@index([classroomId])
+  @@index([classroomId, name])
 }
 
 /// ------------------------------------------------------
@@ -199,9 +194,12 @@ model MealGroup {
   id            String @id @default(cuid())
   name          String
   maxSelections Int    @default(1)
+  active        Boolean @default(false)
 
   choices   MealChoice[]
   menuLinks MenuMealGroup[]
+
+  mealOptionLinks MealOptionMealGroup[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -216,12 +214,13 @@ model MealChoice {
   groupId String
 
   allergens   Allergen[]
-  ingredients String[] @default([])
+  ingredients String[]   @default([])
 
   availStart DateTime?
   availEnd   DateTime?
 
-  active Boolean @default(true)
+  active       Boolean @default(false)
+  extraSticker Boolean @default(false)
 
   caloriesKcal Int?
   proteinG     Float?
@@ -233,8 +232,7 @@ model MealChoice {
   saltG        Float?
 
   orderItems OrderItem[]
-
-  menuLinks MenuMealChoice[]
+  menuLinks  MenuMealChoice[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
@@ -245,26 +243,60 @@ model Allergen {
   name String @unique
 
   mealChoices MealChoice[]
+  mealOptions MealOption[]
 }
 
-/// ------------------------------------------------------
-/// Menus
-/// ------------------------------------------------------
-
 model Menu {
-  id     String @id @default(cuid())
+  id     String  @id @default(cuid())
   name   String
-  active Boolean @default(true)
+  active Boolean @default(false)
 
   schoolLinks MenuSchool[]
   pupils      Pupil[]
   groupLinks  MenuMealGroup[]
   choiceLinks MenuMealChoice[]
 
+  mealOptions MealOption[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@unique([name])
+}
+
+model MealOption {
+  id     String @id @default(cuid())
+  name   String
+
+  menuId String
+  menu   Menu   @relation(fields: [menuId], references: [id], onDelete: Cascade)
+
+  imageUrl String? @db.Text
+  active   Boolean @default(false)
+
+  availStart DateTime?
+  availEnd   DateTime?
+
+  caloriesKcal Int?
+  proteinG     Float?
+  carbsG       Float?
+  sugarsG      Float?
+  fatG         Float?
+  saturatesG   Float?
+  fibreG       Float?
+  saltG        Float?
+
+  allergens Allergen[]
+
+  // keep column for now if it already exists in DB, but stop using it in code
+  stickerCount Int @default(1)
+
+  groupLinks MealOptionMealGroup[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([menuId])
 }
 
 model MenuSchool {
@@ -309,6 +341,22 @@ model MenuMealChoice {
 }
 
 /// ------------------------------------------------------
+/// Meal Option ↔ Meal Group (sections per meal)
+/// ------------------------------------------------------
+
+model MealOptionMealGroup {
+  id           String @id @default(cuid())
+  mealOptionId String
+  groupId      String
+
+  mealOption MealOption @relation(fields: [mealOptionId], references: [id], onDelete: Cascade)
+  group      MealGroup  @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@unique([mealOptionId, groupId])
+  @@index([mealOptionId])
+  @@index([groupId])
+}
+/// ------------------------------------------------------
 /// Orders
 /// ------------------------------------------------------
 
@@ -324,6 +372,7 @@ model LunchOrder {
   updatedAt DateTime @updatedAt
 
   @@unique([pupilId, date])
+  @@index([pupilId, date])
 }
 
 model OrderItem {
@@ -338,6 +387,9 @@ model OrderItem {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([orderId])
+  @@index([choiceId])
 }
 
 /// ------------------------------------------------------
@@ -379,7 +431,7 @@ model Absence {
   classroom   Classroom? @relation("AbsenceClassroom", fields: [classroomId], references: [id], onDelete: Cascade)
 
   pupilId String?
-  pupil   Pupil? @relation("AbsencePupil", fields: [pupilId], references: [id], onDelete: Cascade)
+  pupil   Pupil?  @relation("AbsencePupil", fields: [pupilId], references: [id], onDelete: Cascade)
 
   notes String?
 
@@ -400,7 +452,7 @@ model PrintJob {
   createdAt DateTime @default(now())
 
   createdById String?
-  createdBy   User? @relation("UserPrintJobs", fields: [createdById], references: [id], onDelete: SetNull)
+  createdBy   User?   @relation("UserPrintJobs", fields: [createdById], references: [id], onDelete: SetNull)
 
   date        DateTime
   schoolId    String?

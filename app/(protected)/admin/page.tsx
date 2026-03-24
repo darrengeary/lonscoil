@@ -1,79 +1,75 @@
-// app/(protected)/supplier/meals/page.tsx
 import { prisma } from "@/lib/db";
-import { DashboardHeader } from "@/components/dashboard/header";
-import MenuManager, { MenuSection } from "@/components/supplier/MenuManager";
+import MenuManager, { type MenuSection } from "@/components/supplier/MenuManager";
 
-export default async function MealsPage() {
+export default async function AdminPage() {
   const menus = await prisma.menu.findMany({
-    where: { active: true },
     orderBy: { name: "asc" },
-    select: {
-      id: true,
-      name: true,
-      active: true,
+    include: {
       schoolLinks: {
-        select: { school: { select: { id: true, name: true } } },
-        orderBy: { school: { name: "asc" } },
-      },
-    },
-  });
-
-  const sections: MenuSection[] = await Promise.all(
-    menus.map(async (m) => {
-      const groupLinks = await prisma.menuMealGroup.findMany({
-        where: { menuId: m.id },
         include: {
-          group: {
+          school: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+        },
+      },
+      mealOptions: {
+        orderBy: { name: "asc" },
+        include: {
+          groupLinks: {
             include: {
-              choices: {
-                where: { menuLinks: { some: { menuId: m.id } } },
-                select: {
-                  id: true,
-                  name: true,
-                  groupId: true,
-                  createdAt: true,
-                  updatedAt: true,
+              group: {
+                include: {
+                  choices: {
+                    orderBy: { name: "asc" },
+                    select: {
+                      id: true,
+                      name: true,
+                      groupId: true,
+                      createdAt: true,
+                      updatedAt: true,
+                    },
+                  },
                 },
-                orderBy: { name: "asc" },
               },
             },
           },
         },
-        orderBy: { group: { name: "asc" } },
-      });
+      },
+    },
+  });
 
-      const groups = groupLinks.map((gl) => gl.group);
-
-      return {
-        menu: {
-          id: m.id,
-          name: m.name,
-          active: m.active,
-          schools: m.schoolLinks.map((x) => x.school),
-        },
-        groups: groups.map((g) => ({
-          id: g.id,
-          name: g.name,
-          maxSelections: g.maxSelections,
-          choices: (g.choices ?? []).map((c) => ({
-            id: c.id,
-            name: c.name,
-            groupId: c.groupId,
-            createdAt: c.createdAt.toISOString(),
-            updatedAt: c.updatedAt.toISOString(),
-          })),
+  const initialSections: MenuSection[] = menus.map((menu) => ({
+    menu: {
+      id: menu.id,
+      name: menu.name,
+      active: menu.active,
+      schools: menu.schoolLinks.map((link) => ({
+        id: link.school.id,
+        name: link.school.name,
+      })),
+    },
+    mealOptions: menu.mealOptions.map((mealOption) => ({
+      id: mealOption.id,
+      name: mealOption.name,
+      menuId: mealOption.menuId,
+      stickerCount: mealOption.stickerCount,
+      groups: mealOption.groupLinks.map((link) => ({
+        id: link.group.id,
+        name: link.group.name,
+        maxSelections: link.group.maxSelections,
+        choices: link.group.choices.map((choice) => ({
+          id: choice.id,
+          name: choice.name,
+          groupId: choice.groupId,
+          createdAt: choice.createdAt.toISOString(),
+          updatedAt: choice.updatedAt.toISOString(),
         })),
-      };
-    })
-  );
+      })),
+    })),
+  }));
 
-  return (
-    <div className="p-6 space-y-6">
-      <DashboardHeader
-        heading="Meals"
-        text="Manage menus (Standard / Gluten Free / etc). Each menu has its own meal groups and choices."
-      />
-      <MenuManager initialSections={sections} />
-    </div>
-  );
+  return <MenuManager initialSections={initialSections} />;
 }

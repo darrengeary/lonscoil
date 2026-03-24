@@ -8,7 +8,13 @@ export const sidebarLinks: SidebarNavItem[] = [
       {
         href: "/admin/kitchen-prep",
         icon: "ReceiptText",
-        title: "Lunch Orders",
+        title: "Order Summary",
+        authorizeOnly: UserRole.ADMIN,
+      },
+      {
+        href: "/admin/student-orders",
+        icon: "PersonStanding",
+        title: "Search Orders",
         authorizeOnly: UserRole.ADMIN,
       },
       {
@@ -20,13 +26,13 @@ export const sidebarLinks: SidebarNavItem[] = [
       {
         href: "/admin/schools",
         icon: "School",
-        title: "View Schools",
+        title: "Manage Schools",
         authorizeOnly: UserRole.ADMIN,
       },
       {
         href: "/admin/schedule",
         icon: "CalendarDays",
-        title: "Schedule",
+        title: "School Schedules",
         authorizeOnly: UserRole.ADMIN,
       },
       {

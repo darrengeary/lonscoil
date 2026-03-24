@@ -19,34 +19,21 @@ export const GET = auth(async (req: Request) => {
   const menuIdParam = searchParams.get("menuId")?.trim();
   let schoolId = searchParams.get("schoolId")?.trim() || null;
 
-  // ---------------------------------------
-  // ADMIN / SCHOOLADMIN listing mode
-  // Used by kitchen prep page:
-  //   GET /api/mealgroups
-  //   GET /api/mealgroups?schoolId=...
-  // ---------------------------------------
   if (!pupilId && !menuIdParam) {
     if (!isAdmin(user) && !isSchoolAdmin(user)) {
       return new Response("Unauthorized", { status: 401 });
     }
 
-    // SCHOOLADMIN is always restricted to own school
     if (isSchoolAdmin(user)) {
       schoolId = user.schoolId ?? null;
       if (!schoolId) return new Response("No school assigned", { status: 403 });
     }
 
-    // Find allowed menus:
-    // - if schoolId present: global menus OR menus linked to that school
-    // - otherwise (ADMIN all schools): all active menus
     const menus = await prisma.menu.findMany({
       where: schoolId
         ? {
             active: true,
-            OR: [
-              { schoolLinks: { none: {} } }, // global
-              { schoolLinks: { some: { schoolId } } }, // school-linked
-            ],
+            OR: [{ schoolLinks: { none: {} } }, { schoolLinks: { some: { schoolId } } }],
           }
         : {
             active: true,
@@ -77,7 +64,6 @@ export const GET = auth(async (req: Request) => {
       },
     });
 
-    // de-dupe because the same group can be linked to multiple menus
     const unique = new Map<string, { id: string; name: string }>();
     for (const link of links) {
       unique.set(link.group.id, {
@@ -91,12 +77,8 @@ export const GET = auth(async (req: Request) => {
     );
   }
 
-  // ---------------------------------------
-  // Existing pupil/menu flow
-  // ---------------------------------------
   let menuId = menuIdParam ?? null;
 
-  // Resolve effective menu from pupil + school
   if (!menuId && pupilId) {
     const pupil = await prisma.pupil.findFirst({
       where: { id: pupilId, parentId: user.id },
@@ -113,10 +95,7 @@ export const GET = auth(async (req: Request) => {
     const allowedMenus = await prisma.menu.findMany({
       where: {
         active: true,
-        OR: [
-          { schoolLinks: { none: {} } }, // global
-          { schoolLinks: { some: { schoolId: resolvedSchoolId } } }, // linked to school
-        ],
+        OR: [{ schoolLinks: { none: {} } }, { schoolLinks: { some: { schoolId: resolvedSchoolId } } }],
       },
       orderBy: { name: "asc" },
       select: { id: true },
@@ -127,8 +106,9 @@ export const GET = auth(async (req: Request) => {
     }
 
     menuId =
-      (pupil.menuId && allowedMenus.some((m) => m.id === pupil.menuId) ? pupil.menuId : null) ??
-      allowedMenus[0].id;
+      (pupil.menuId && allowedMenus.some((m) => m.id === pupil.menuId)
+        ? pupil.menuId
+        : null) ?? allowedMenus[0].id;
   }
 
   if (!menuId) return new Response("Could not resolve menu", { status: 400 });
@@ -169,9 +149,9 @@ export const GET = auth(async (req: Request) => {
     },
   });
 
-  const groups = links.map((l) => ({
-    ...l.group,
-    maxSelections: l.maxSelectionsOverride ?? l.group.maxSelections,
+  const groups = links.map((link) => ({
+    ...link.group,
+    maxSelections: link.maxSelectionsOverride ?? link.group.maxSelections,
   }));
 
   return NextResponse.json(groups);
@@ -183,10 +163,10 @@ export const POST = auth(async (req: Request) => {
 
   const body = await req.json().catch(() => null);
   const name = (body?.name ?? "").trim();
-  const menuId = (body?.menuId ?? "").trim();
+  const mealOptionId = (body?.mealOptionId ?? "").trim();
   const maxSelections = Number(body?.maxSelections ?? 1);
 
-  if (!menuId) return new Response("menuId required", { status: 400 });
+  if (!mealOptionId) return new Response("mealOptionId required", { status: 400 });
   if (!name) return new Response("name required", { status: 400 });
   if (!Number.isFinite(maxSelections) || maxSelections < 1) {
     return new Response("maxSelections invalid", { status: 400 });
@@ -194,13 +174,25 @@ export const POST = auth(async (req: Request) => {
 
   try {
     const created = await prisma.$transaction(async (tx) => {
+      const mealOption = await tx.mealOption.findUnique({
+        where: { id: mealOptionId },
+        select: { id: true },
+      });
+
+      if (!mealOption) {
+        throw new Error("MEAL_OPTION_NOT_FOUND");
+      }
+
       const group = await tx.mealGroup.create({
         data: { name, maxSelections },
         select: { id: true, name: true, maxSelections: true },
       });
 
-      await tx.menuMealGroup.create({
-        data: { menuId, groupId: group.id },
+      await tx.mealOptionMealGroup.create({
+        data: {
+          mealOptionId,
+          groupId: group.id,
+        },
       });
 
       return { ...group, choices: [] };
@@ -208,6 +200,10 @@ export const POST = auth(async (req: Request) => {
 
     return NextResponse.json(created, { status: 201 });
   } catch (e: any) {
+    if (e?.message === "MEAL_OPTION_NOT_FOUND") {
+      return new Response("mealOption not found", { status: 404 });
+    }
+
     console.error(e);
     return new Response("server error", { status: 500 });
   }

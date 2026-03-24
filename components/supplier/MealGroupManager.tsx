@@ -1,4 +1,3 @@
-// components/supplier/MealGroupManager.tsx
 "use client";
 
 import { useRef, useState } from "react";
@@ -25,19 +24,21 @@ export interface MealGroup {
 
 interface Props {
   menuId: string;
+  mealOptionId: string;
   initialGroups?: MealGroup[];
   onGroupsChange?: (groups: MealGroup[]) => void;
 }
 
 export default function MealGroupManager({
   menuId,
+  mealOptionId,
   initialGroups,
   onGroupsChange,
 }: Props) {
   const [groups, setGroups] = useState<MealGroup[]>(initialGroups ?? []);
   const [modalOpen, setModalOpen] = useState(false);
-  const [newName, setNewName] = useState("");
-  const [newMax, setNewMax] = useState(1);
+  const [newGroupName, setNewGroupName] = useState("");
+  const [newGroupMaxSelections, setNewGroupMaxSelections] = useState(1);
   const inputRef = useRef<HTMLInputElement>(null);
 
   function updateGroups(next: MealGroup[]) {
@@ -46,7 +47,11 @@ export default function MealGroupManager({
   }
 
   async function saveGroup() {
-    const payload = { name: newName.trim(), maxSelections: newMax, menuId };
+    const payload = {
+      name: newGroupName.trim(),
+      maxSelections: newGroupMaxSelections,
+      mealOptionId,
+    };
 
     const res = await fetch("/api/mealgroups", {
       method: "POST",
@@ -59,15 +64,14 @@ export default function MealGroupManager({
     const created: MealGroup = await res.json();
     updateGroups([...groups, created]);
 
-    setNewName("");
-    setNewMax(1);
+    setNewGroupName("");
+    setNewGroupMaxSelections(1);
     setModalOpen(false);
     setTimeout(() => inputRef.current?.focus(), 0);
   }
 
   return (
     <div className="space-y-4">
-      {/* Menu-scoped New Group button */}
       <div className="flex justify-between items-center">
         <Button onClick={() => setModalOpen(true)} type="button">
           <Plus className="mr-2 h-4 w-4" />
@@ -75,7 +79,6 @@ export default function MealGroupManager({
         </Button>
       </div>
 
-      {/* Modal */}
       {modalOpen && (
         <div className="fixed inset-0 bg-black/20 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl shadow-xl p-6 min-w-[320px] w-full max-w-md space-y-4 border">
@@ -92,9 +95,9 @@ export default function MealGroupManager({
                 <Input
                   id="mealgroup-name"
                   ref={inputRef}
-                  placeholder="e.g. Sandwich"
-                  value={newName}
-                  onChange={(e) => setNewName(e.target.value)}
+                  placeholder="e.g. Side, Drink, Sandwich Extras"
+                  value={newGroupName}
+                  onChange={(e) => setNewGroupName(e.target.value)}
                   className="bg-white w-full"
                 />
               </div>
@@ -106,23 +109,21 @@ export default function MealGroupManager({
                 <Input
                   type="number"
                   min={1}
-                  value={newMax}
-                  onChange={(e) => setNewMax(Number(e.target.value))}
+                  value={newGroupMaxSelections}
+                  onChange={(e) =>
+                    setNewGroupMaxSelections(Math.max(1, Number(e.target.value) || 1))
+                  }
                   className="bg-white w-full"
                 />
               </div>
 
               <div className="flex flex-col sm:flex-row justify-end gap-2 pt-2">
-                <Button
-                  variant="outline"
-                  onClick={() => setModalOpen(false)}
-                  type="button"
-                >
+                <Button variant="outline" onClick={() => setModalOpen(false)} type="button">
                   Cancel
                 </Button>
                 <Button
                   onClick={saveGroup}
-                  disabled={!newName.trim() || newMax <= 0}
+                  disabled={!newGroupName.trim() || newGroupMaxSelections <= 0}
                   type="button"
                 >
                   Publish
@@ -133,7 +134,6 @@ export default function MealGroupManager({
         </div>
       )}
 
-      {/* Groups grid */}
       <div className="min-h-[1px] bg-[#F4F7FA] rounded-xl p-4">
         <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
           {groups.map((group) => (
@@ -142,11 +142,10 @@ export default function MealGroupManager({
               className="relative flex flex-col bg-white border border-transparent rounded-3xl p-7 shadow-sm hover:shadow-lg transition-all duration-150"
             >
               <div className="flex items-center justify-between mb-4">
-                <div className="text-xl font-bold text-[#27364B] truncate">
-                  {group.name}
-                </div>
+                <div className="text-xl font-bold text-[#27364B] truncate">{group.name}</div>
+
                 <div className="px-3 py-1 rounded-full bg-[#FFE6E6] text-[#DC2626] font-semibold text-sm flex items-center ml-3">
-                  Max:{" "}
+                  Max:
                   <span className="ml-2 font-bold">{group.maxSelections}</span>
                 </div>
               </div>

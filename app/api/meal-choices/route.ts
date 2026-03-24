@@ -1,3 +1,4 @@
+// app/api/meal-choices/route.ts
 import { auth } from "@/auth";
 import { prisma } from "@/lib/db";
 
@@ -21,7 +22,7 @@ export const GET = auth(async (req) => {
   const mealChoices = await prisma.mealChoice.findMany({
     where: {
       ...(groupId ? { groupId } : {}),
-      menuLinks: { some: { menuId } }, // ✅ only choices in this menu
+      menuLinks: { some: { menuId } },
     },
     include: { allergens: true },
     orderBy: { createdAt: "asc" },
@@ -36,26 +37,51 @@ export const POST = auth(async (req) => {
   }
 
   const data = await req.json();
-  const { menuId, active, ...safe } = data; // drop active here if you want
+
+  const {
+    menuId,
+    mealOptionId, // 🆕 NEW
+    active,
+    ...safe
+  } = data;
 
   if (!menuId) return new Response("menuId is required", { status: 400 });
   if (!safe?.groupId) return new Response("groupId is required", { status: 400 });
-  if (!safe?.name || !String(safe.name).trim()) return new Response("name is required", { status: 400 });
-  
+  if (!safe?.name || !String(safe.name).trim()) {
+    return new Response("name is required", { status: 400 });
+  }
+
   const created = await prisma.$transaction(async (tx) => {
     const mealChoice = await tx.mealChoice.create({
       data: {
         ...safe,
-        // If you DO want to allow active on create, uncomment:
-        // active: typeof active === "boolean" ? active : true,
       },
       include: { allergens: true },
     });
 
-    // ✅ link choice to menu
+    // ✅ always link to menu (existing behaviour)
     await tx.menuMealChoice.create({
       data: { menuId, choiceId: mealChoice.id },
     });
+
+    // 🆕 OPTIONAL: ensure group is linked to meal option
+    if (mealOptionId) {
+      const existing = await tx.mealOptionMealGroup.findFirst({
+        where: {
+          mealOptionId,
+          groupId: safe.groupId,
+        },
+      });
+
+      if (!existing) {
+        await tx.mealOptionMealGroup.create({
+          data: {
+            mealOptionId,
+            groupId: safe.groupId,
+          },
+        });
+      }
+    }
 
     return mealChoice;
   });
@@ -92,9 +118,9 @@ export const DELETE = auth(async (req) => {
 
   const { id } = await req.json();
 
-  // optional: remove joins first (safe even if cascade exists)
   await prisma.menuMealChoice.deleteMany({ where: { choiceId: id } });
 
   await prisma.mealChoice.delete({ where: { id } });
+
   return Response.json({ success: true });
 });

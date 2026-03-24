@@ -4,8 +4,15 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { ChevronDown, ChevronRight, Pencil, Plus } from "lucide-react";
-import MealGroupManager, { MealGroup } from "@/components/supplier/MealGroupManager";
+import {
+  ChevronDown,
+  ChevronRight,
+  Pencil,
+  Plus,
+  UtensilsCrossed,
+} from "lucide-react";
+import MealGroupManager from "@/components/supplier/MealGroupManager";
+import type { MealGroup } from "@/components/supplier/MealGroupManager";
 
 export type SchoolTag = { id: string; name: string };
 
@@ -16,20 +23,35 @@ export type MenuDTO = {
   schools: SchoolTag[];
 };
 
+export type MealOptionDTO = {
+  id: string;
+  name: string;
+  menuId: string;
+  stickerCount: number;
+  groups: MealGroup[];
+};
+
 export type MenuSection = {
   menu: MenuDTO;
-  groups: MealGroup[];
+  mealOptions: MealOptionDTO[];
+};
+
+type SavedMealOptionResponse = {
+  id: string;
+  name: string;
+  menuId: string;
+  stickerCount: number;
 };
 
 function addTag<T extends { id: string }>(list: T[], v: T) {
   if (list.some((x) => x.id === v.id)) return list;
   return [...list, v];
 }
+
 function removeTagById<T extends { id: string }>(list: T[], id: string) {
   return list.filter((x) => x.id !== id);
 }
 
-// stable tag color from id (no DB needed)
 function schoolTagClass(id: string) {
   const n = Array.from(id).reduce((a, c) => a + c.charCodeAt(0), 0) % 6;
   const styles = [
@@ -43,16 +65,20 @@ function schoolTagClass(id: string) {
   return styles[n];
 }
 
-export default function MenuManager({ initialSections }: { initialSections: MenuSection[] }) {
+export default function MenuManager({
+  initialSections = [],
+}: {
+  initialSections?: MenuSection[];
+}) {
   const [sections, setSections] = useState<MenuSection[]>(initialSections);
 
-  // collapsed/expanded per menu
   const [openMenuIds, setOpenMenuIds] = useState<Record<string, boolean>>(() => {
-    const first = initialSections[0]?.menu.id;
+    const first = initialSections?.[0]?.menu.id;
     return first ? { [first]: true } : {};
   });
 
-  // schools available for tag input
+  const [openMealOptionIds, setOpenMealOptionIds] = useState<Record<string, boolean>>({});
+
   const [allSchools, setAllSchools] = useState<SchoolTag[]>([]);
   useEffect(() => {
     fetch("/api/schools", { cache: "no-store" })
@@ -61,23 +87,31 @@ export default function MenuManager({ initialSections }: { initialSections: Menu
       .catch(() => setAllSchools([]));
   }, []);
 
-  // modal state
   const [modalOpen, setModalOpen] = useState(false);
   const [editingMenuId, setEditingMenuId] = useState<string | null>(null);
-
   const [menuName, setMenuName] = useState("");
 
   const [selectedSchools, setSelectedSchools] = useState<SchoolTag[]>([]);
   const [schoolQuery, setSchoolQuery] = useState("");
   const [schoolSuggestOpen, setSchoolSuggestOpen] = useState(false);
 
-  const nameRef = useRef<HTMLInputElement>(null);
-  const isEdit = !!editingMenuId;
+  const [mealModalOpen, setMealModalOpen] = useState(false);
+  const [mealModalMenuId, setMealModalMenuId] = useState<string | null>(null);
+  const [mealEditingId, setMealEditingId] = useState<string | null>(null);
+  const [mealOptionName, setMealOptionName] = useState("");
+  const [mealOptionStickerCount, setMealOptionStickerCount] = useState(1);
 
-  const canSave = useMemo(() => {
-    const n = menuName.trim();
-    return n.length >= 2;
-  }, [menuName]);
+  const nameRef = useRef<HTMLInputElement>(null);
+  const mealOptionNameRef = useRef<HTMLInputElement>(null);
+
+  const isEditMenu = !!editingMenuId;
+  const isEditMealOption = !!mealEditingId;
+
+  const canSaveMenu = useMemo(() => menuName.trim().length >= 2, [menuName]);
+  const canSaveMealOption = useMemo(
+    () => mealOptionName.trim().length >= 2 && mealOptionStickerCount >= 1,
+    [mealOptionName, mealOptionStickerCount]
+  );
 
   const suggestedSchools = useMemo(() => {
     const q = schoolQuery.trim().toLowerCase();
@@ -90,7 +124,11 @@ export default function MenuManager({ initialSections }: { initialSections: Menu
     setOpenMenuIds((prev) => ({ ...prev, [menuId]: !prev[menuId] }));
   }
 
-  function openCreate() {
+  function toggleMealOption(mealOptionId: string) {
+    setOpenMealOptionIds((prev) => ({ ...prev, [mealOptionId]: !prev[mealOptionId] }));
+  }
+
+  function openCreateMenu() {
     setEditingMenuId(null);
     setMenuName("");
     setSelectedSchools([]);
@@ -100,7 +138,7 @@ export default function MenuManager({ initialSections }: { initialSections: Menu
     setTimeout(() => nameRef.current?.focus(), 0);
   }
 
-  function openEdit(menu: MenuDTO) {
+  function openEditMenu(menu: MenuDTO) {
     setEditingMenuId(menu.id);
     setMenuName(menu.name);
     setSelectedSchools(menu.schools ?? []);
@@ -110,21 +148,23 @@ export default function MenuManager({ initialSections }: { initialSections: Menu
     setTimeout(() => nameRef.current?.focus(), 0);
   }
 
-  function closeModal() {
+  function closeMenuModal() {
     setModalOpen(false);
     setEditingMenuId(null);
   }
 
   async function saveMenu() {
-    if (!canSave) return;
+    if (!canSaveMenu) return;
 
     const name = menuName.trim();
     const schoolIds = selectedSchools.map((s) => s.id);
 
     const res = await fetch("/api/menus", {
-      method: isEdit ? "PUT" : "POST",
+      method: isEditMenu ? "PUT" : "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(isEdit ? { id: editingMenuId, name, schoolIds } : { name, schoolIds }),
+      body: JSON.stringify(
+        isEditMenu ? { id: editingMenuId, name, schoolIds } : { name, schoolIds }
+      ),
     });
 
     if (!res.ok) return;
@@ -132,34 +172,141 @@ export default function MenuManager({ initialSections }: { initialSections: Menu
     const saved: MenuDTO = await res.json();
 
     setSections((prev) => {
-      if (isEdit) {
+      if (isEditMenu) {
         return prev.map((s) => (s.menu.id === saved.id ? { ...s, menu: saved } : s));
       }
-      return [...prev, { menu: saved, groups: [] }];
+
+      return [...prev, { menu: saved, mealOptions: [] }];
     });
 
     setOpenMenuIds((prev) => ({ ...prev, [saved.id]: true }));
-    closeModal();
+    closeMenuModal();
+  }
+
+  function openCreateMealOption(menuId: string) {
+    setMealEditingId(null);
+    setMealModalMenuId(menuId);
+    setMealOptionName("");
+    setMealOptionStickerCount(1);
+    setMealModalOpen(true);
+    setTimeout(() => mealOptionNameRef.current?.focus(), 0);
+  }
+
+  function openEditMealOption(mealOption: MealOptionDTO) {
+    setMealEditingId(mealOption.id);
+    setMealModalMenuId(mealOption.menuId);
+    setMealOptionName(mealOption.name);
+    setMealOptionStickerCount(mealOption.stickerCount);
+    setMealModalOpen(true);
+    setTimeout(() => mealOptionNameRef.current?.focus(), 0);
+  }
+
+  function closeMealOptionModal() {
+    setMealModalOpen(false);
+    setMealModalMenuId(null);
+    setMealEditingId(null);
+    setMealOptionName("");
+    setMealOptionStickerCount(1);
+  }
+
+  async function saveMealOption() {
+    if (!mealModalMenuId || !canSaveMealOption) return;
+
+    const body = isEditMealOption
+      ? {
+          id: mealEditingId,
+          name: mealOptionName.trim(),
+          stickerCount: mealOptionStickerCount,
+        }
+      : {
+          menuId: mealModalMenuId,
+          name: mealOptionName.trim(),
+          stickerCount: mealOptionStickerCount,
+        };
+
+    const res = await fetch("/api/meal-options", {
+      method: isEditMealOption ? "PUT" : "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+
+    if (!res.ok) return;
+
+    const saved: SavedMealOptionResponse = await res.json();
+
+    setSections((prev) =>
+      prev.map((section) => {
+        if (section.menu.id !== mealModalMenuId) return section;
+
+        if (isEditMealOption) {
+          return {
+            ...section,
+            mealOptions: section.mealOptions.map((existingMealOption) =>
+              existingMealOption.id === saved.id
+                ? {
+                    ...existingMealOption,
+                    name: saved.name,
+                    stickerCount: saved.stickerCount,
+                  }
+                : existingMealOption
+            ),
+          };
+        }
+
+        return {
+          ...section,
+          mealOptions: [
+            ...section.mealOptions,
+            {
+              id: saved.id,
+              name: saved.name,
+              menuId: saved.menuId,
+              stickerCount: saved.stickerCount,
+              groups: [],
+            },
+          ],
+        };
+      })
+    );
+
+    setOpenMealOptionIds((prev) => ({
+      ...prev,
+      [saved.id]: true,
+    }));
+
+    closeMealOptionModal();
+  }
+
+  function handleMealGroupsChange(menuId: string, mealOptionId: string, groups: MealGroup[]) {
+    setSections((prev) =>
+      prev.map((section) =>
+        section.menu.id !== menuId
+          ? section
+          : {
+              ...section,
+              mealOptions: section.mealOptions.map((mealOption) =>
+                mealOption.id !== mealOptionId ? mealOption : { ...mealOption, groups }
+              ),
+            }
+      )
+    );
   }
 
   return (
     <div className="space-y-6">
-      {/* Top bar: New Menu */}
       <div className="flex justify-between items-center">
-        <Button onClick={openCreate}>
+        <Button onClick={openCreateMenu}>
           <Plus className="mr-2 h-4 w-4" />
           New Menu
         </Button>
       </div>
 
-      {/* Create/Edit modal */}
       {modalOpen && (
         <div className="fixed inset-0 bg-black/20 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl shadow-xl p-6 min-w-[320px] w-full max-w-md space-y-4 border">
-            <h2 className="text-lg font-semibold">{isEdit ? "Edit Menu" : "Add Menu"}</h2>
+            <h2 className="text-lg font-semibold">{isEditMenu ? "Edit Menu" : "Add Menu"}</h2>
 
             <div className="space-y-3">
-              {/* Name */}
               <div className="space-y-1">
                 <div className="text-xs font-semibold text-gray-600">Menu name</div>
                 <Input
@@ -170,21 +317,22 @@ export default function MenuManager({ initialSections }: { initialSections: Menu
                 />
               </div>
 
-              {/* Schools tag input */}
               <div className="space-y-2">
                 <div className="text-sm font-medium">Schools</div>
 
                 <div className="flex flex-wrap gap-2">
-                  {selectedSchools.map((s) => (
+                  {selectedSchools.map((school) => (
                     <span
-                      key={s.id}
+                      key={school.id}
                       className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-3 py-1 text-sm"
                     >
-                      {s.name}
+                      {school.name}
                       <button
                         type="button"
                         className="opacity-60 hover:opacity-100"
-                        onClick={() => setSelectedSchools((prev) => removeTagById(prev, s.id))}
+                        onClick={() =>
+                          setSelectedSchools((prev) => removeTagById(prev, school.id))
+                        }
                       >
                         ✕
                       </button>
@@ -206,13 +354,15 @@ export default function MenuManager({ initialSections }: { initialSections: Menu
                         if (!q) return;
 
                         const hit =
-                          suggestedSchools.find((s) => s.name.toLowerCase() === q) ?? suggestedSchools[0];
+                          suggestedSchools.find((school) => school.name.toLowerCase() === q) ??
+                          suggestedSchools[0];
 
                         if (hit) {
                           setSelectedSchools((prev) => addTag(prev, hit));
                           setSchoolQuery("");
                         }
                       }
+
                       if (e.key === "Backspace" && !schoolQuery && selectedSchools.length) {
                         setSelectedSchools((prev) => prev.slice(0, -1));
                       }
@@ -221,18 +371,18 @@ export default function MenuManager({ initialSections }: { initialSections: Menu
 
                   {schoolSuggestOpen && suggestedSchools.length > 0 && (
                     <div className="absolute z-50 mt-1 w-full rounded-xl border bg-white shadow max-h-56 overflow-auto">
-                      {suggestedSchools.map((s) => (
+                      {suggestedSchools.map((school) => (
                         <button
-                          key={s.id}
+                          key={school.id}
                           type="button"
                           className="w-full text-left px-3 py-2 hover:bg-gray-50 flex items-center justify-between"
                           onMouseDown={(ev) => ev.preventDefault()}
                           onClick={() => {
-                            setSelectedSchools((prev) => addTag(prev, s));
+                            setSelectedSchools((prev) => addTag(prev, school));
                             setSchoolQuery("");
                           }}
                         >
-                          <span>{s.name}</span>
+                          <span>{school.name}</span>
                           <span className="text-xs text-gray-400">Add</span>
                         </button>
                       ))}
@@ -241,17 +391,16 @@ export default function MenuManager({ initialSections }: { initialSections: Menu
                 </div>
 
                 <div className="text-xs text-gray-500">
-                  If you leave this empty, the menu is <span className="font-semibold">GLOBAL</span> (available to all schools).
+                  If you leave this empty, the menu is <span className="font-semibold">GLOBAL</span>.
                 </div>
               </div>
 
-              {/* Buttons */}
               <div className="flex justify-end gap-2 pt-2">
-                <Button variant="outline" onClick={closeModal} type="button">
+                <Button variant="outline" onClick={closeMenuModal} type="button">
                   Cancel
                 </Button>
-                <Button onClick={saveMenu} disabled={!canSave} type="button">
-                  {isEdit ? "Save" : "Create"}
+                <Button onClick={saveMenu} disabled={!canSaveMenu} type="button">
+                  {isEditMenu ? "Save" : "Create"}
                 </Button>
               </div>
             </div>
@@ -259,71 +408,204 @@ export default function MenuManager({ initialSections }: { initialSections: Menu
         </div>
       )}
 
-      {/* Menu sections */}
+      {mealModalOpen && (
+        <div className="fixed inset-0 bg-black/20 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-xl p-6 min-w-[320px] w-full max-w-md space-y-4 border">
+            <h2 className="text-lg font-semibold">
+              {isEditMealOption ? "Edit Meal Option" : "Add Meal Option"}
+            </h2>
+
+            <div className="space-y-3">
+              <div className="space-y-1">
+                <div className="text-xs font-semibold text-gray-600">Meal name</div>
+                <Input
+                  ref={mealOptionNameRef}
+                  placeholder="e.g. Chicken Curry, Soup + Sandwich"
+                  value={mealOptionName}
+                  onChange={(e) => setMealOptionName(e.target.value)}
+                />
+              </div>
+
+              <div className="space-y-1">
+                <div className="text-xs font-semibold text-gray-600">Sticker count</div>
+                <Input
+                  type="number"
+                  min={1}
+                  value={mealOptionStickerCount}
+                  onChange={(e) =>
+                    setMealOptionStickerCount(Math.max(1, Number(e.target.value) || 1))
+                  }
+                />
+                <div className="text-xs text-gray-500">
+                  Use 2 for meals like soup + sandwich that need two labels.
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <Button variant="outline" onClick={closeMealOptionModal} type="button">
+                  Cancel
+                </Button>
+                <Button onClick={saveMealOption} disabled={!canSaveMealOption} type="button">
+                  {isEditMealOption ? "Save" : "Create"}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="space-y-4">
         {sections.map((section) => {
-          const isOpen = !!openMenuIds[section.menu.id];
+          const isMenuOpen = !!openMenuIds[section.menu.id];
           const schools = section.menu.schools ?? [];
 
           return (
             <Card key={section.menu.id} className="bg-white rounded-2xl p-4 border">
               <div className="w-full flex items-center justify-between gap-3">
-                {/* Left group: chevron + name + tags */}
                 <button
                   type="button"
                   onClick={() => toggleMenu(section.menu.id)}
                   className="flex items-center gap-2 min-w-0 flex-1"
                 >
-                  {isOpen ? <ChevronDown className="h-4 w-4 shrink-0" /> : <ChevronRight className="h-4 w-4 shrink-0" />}
+                  {isMenuOpen ? (
+                    <ChevronDown className="h-4 w-4 shrink-0" />
+                  ) : (
+                    <ChevronRight className="h-4 w-4 shrink-0" />
+                  )}
 
                   <div className="text-lg font-semibold text-[#27364B] truncate">
                     {section.menu.name}
                   </div>
 
-                  {/* tags live between name and the right-side buttons */}
                   <div className="hidden sm:flex items-center gap-2 ml-2 flex-wrap min-w-0">
                     {schools.length === 0 ? (
                       <span className="text-xs px-2 py-1 rounded-full border bg-slate-50 text-slate-700 shrink-0">
                         GLOBAL
                       </span>
                     ) : (
-                      schools.map((s) => (
+                      schools.map((school) => (
                         <span
-                          key={s.id}
-                          className={`text-xs px-2 py-1 rounded-full border ${schoolTagClass(s.id)} shrink-0`}
-                          title={s.name}
+                          key={school.id}
+                          className={`text-xs px-2 py-1 rounded-full border ${schoolTagClass(school.id)} shrink-0`}
+                          title={school.name}
                         >
-                          {s.name}
+                          {school.name}
                         </span>
                       ))
                     )}
                   </div>
                 </button>
 
-                {/* Right group: edit + count */}
                 <div className="flex items-center gap-2 shrink-0">
                   <Button
                     variant="outline"
                     size="sm"
                     className="rounded-xl"
-                    onClick={() => openEdit(section.menu)}
+                    onClick={() => openEditMenu(section.menu)}
                     type="button"
                   >
                     <Pencil className="h-4 w-4 mr-2" />
                     Edit
                   </Button>
 
-                  {!isOpen && (
+                  {!isMenuOpen && (
                     <div className="text-xs text-gray-500">
-                      {section.groups.length} group{section.groups.length === 1 ? "" : "s"}
+                      {section.mealOptions.length} meal
+                      {section.mealOptions.length === 1 ? "" : "s"}
                     </div>
                   )}
                 </div>
               </div>
 
-              {isOpen && (
-                <div className="pt-4">
-                  <MealGroupManager menuId={section.menu.id} initialGroups={section.groups} />
+              {isMenuOpen && (
+                <div className="pt-5 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-sm font-semibold text-gray-700">Meal Options</div>
+                      <div className="text-xs text-gray-500">
+                        These are the meal cards parents choose first.
+                      </div>
+                    </div>
+
+                    <Button
+                      size="sm"
+                      onClick={() => openCreateMealOption(section.menu.id)}
+                      type="button"
+                    >
+                      <Plus className="mr-2 h-4 w-4" />
+                      Add Meal
+                    </Button>
+                  </div>
+
+                  {section.mealOptions.length === 0 ? (
+                    <div className="rounded-xl border border-dashed bg-gray-50 px-4 py-6 text-sm text-gray-500">
+                      No meal options yet.
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {section.mealOptions.map((mealOption) => {
+                        const isMealOpen = !!openMealOptionIds[mealOption.id];
+
+                        return (
+                          <Card key={mealOption.id} className="rounded-2xl border bg-white p-4">
+                            <div className="flex items-center justify-between gap-3">
+                              <button
+                                type="button"
+                                onClick={() => toggleMealOption(mealOption.id)}
+                                className="flex items-center gap-3 min-w-0 flex-1 text-left"
+                              >
+                                {isMealOpen ? (
+                                  <ChevronDown className="h-4 w-4 shrink-0" />
+                                ) : (
+                                  <ChevronRight className="h-4 w-4 shrink-0" />
+                                )}
+
+                                <div className="h-10 w-10 rounded-xl bg-slate-100 border flex items-center justify-center shrink-0">
+                                  <UtensilsCrossed className="h-5 w-5 text-slate-600" />
+                                </div>
+
+                                <div className="min-w-0">
+                                  <div className="font-semibold text-[#27364B] truncate">
+                                    {mealOption.name}
+                                  </div>
+                                  <div className="text-xs text-gray-500">
+                                    {mealOption.stickerCount} sticker
+                                    {mealOption.stickerCount === 1 ? "" : "s"} ·{" "}
+                                    {mealOption.groups.length} group
+                                    {mealOption.groups.length === 1 ? "" : "s"}
+                                  </div>
+                                </div>
+                              </button>
+
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="rounded-xl"
+                                onClick={() => openEditMealOption(mealOption)}
+                                type="button"
+                              >
+                                <Pencil className="h-4 w-4 mr-2" />
+                                Edit
+                              </Button>
+                            </div>
+
+                            {isMealOpen && (
+                              <div className="pt-4">
+                                <MealGroupManager
+                                  menuId={section.menu.id}
+                                  mealOptionId={mealOption.id}
+                                  initialGroups={mealOption.groups}
+                                  onGroupsChange={(groups) =>
+                                    handleMealGroupsChange(section.menu.id, mealOption.id, groups)
+                                  }
+                                />
+                              </div>
+                            )}
+                          </Card>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               )}
             </Card>
