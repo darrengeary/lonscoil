@@ -10,24 +10,16 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Calendar } from "@/components/ui/calendar";
-import { format } from "date-fns";
-import { Plus, Upload, Pencil, ToggleLeft, ToggleRight } from "lucide-react";
+import { ToggleLeft, ToggleRight, Plus, Pencil } from "lucide-react";
 
 type Allergen = { id: string; name: string; color?: string | null };
 
 export interface MealChoice {
   id: string;
   name: string;
-  imageUrl?: string | null;
   active?: boolean;
-
+  extraSticker?: boolean;
   allergens?: Allergen[];
-  ingredients?: string[];
-
-  availStart?: string | null;
-  availEnd?: string | null;
 
   caloriesKcal?: number | null;
   proteinG?: number | null;
@@ -47,14 +39,10 @@ interface Props {
   disabled?: boolean;
 }
 
-const PLACEHOLDER_IMG = "/meal-placeholder.jpg";
-
 async function fetchMealChoices(menuId: string, groupId: string) {
   const res = await fetch(
     `/api/meal-choices?menuId=${encodeURIComponent(menuId)}&groupId=${encodeURIComponent(groupId)}`,
-    {
-      cache: "no-store",
-    }
+    { cache: "no-store" }
   );
   if (!res.ok) throw new Error(await res.text());
   return (await res.json()) as MealChoice[];
@@ -64,20 +52,6 @@ async function fetchAllergens() {
   const res = await fetch(`/api/allergens`, { cache: "no-store" });
   if (!res.ok) throw new Error(await res.text());
   return (await res.json()) as Allergen[];
-}
-
-async function uploadMealChoiceImage(file: File) {
-  const fd = new FormData();
-  fd.append("file", file);
-
-  const res = await fetch("/api/meal-choices/upload", {
-    method: "POST",
-    body: fd,
-  });
-
-  if (!res.ok) throw new Error(await res.text());
-  const data = await res.json();
-  return data.url as string;
 }
 
 async function updateMealChoice(payload: any) {
@@ -120,37 +94,19 @@ function pillStyle(color?: string | null): React.CSSProperties {
   return { backgroundColor: color };
 }
 
-function addTag(list: string[], raw: string) {
-  const v = raw.trim();
-  if (!v) return list;
-  if (list.includes(v)) return list;
-  return [...list, v];
-}
-
-function removeTag(list: string[], v: string) {
-  return list.filter((x) => x !== v);
-}
-
 function LabeledInput({
   label,
   value,
   onChange,
-  placeholder,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
-  placeholder?: string;
 }) {
   return (
     <div className="space-y-1">
       <div className="text-xs font-semibold text-gray-600">{label}</div>
-      <Input
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder ?? ""}
-        inputMode="decimal"
-      />
+      <Input value={value} onChange={(e) => onChange(e.target.value)} inputMode="decimal" />
     </div>
   );
 }
@@ -177,20 +133,9 @@ export default function ChoiceManager({
   );
 
   const [editName, setEditName] = useState("");
-  const [editActive, setEditActive] = useState(true);
-  const [editFile, setEditFile] = useState<File | null>(null);
-  const [editPreviewUrl, setEditPreviewUrl] = useState<string | null>(null);
-
+  const [editActive, setEditActive] = useState(false);
+  const [editExtraSticker, setEditExtraSticker] = useState(false);
   const [editAllergens, setEditAllergens] = useState<Allergen[]>([]);
-  const [editAllergenQuery, setEditAllergenQuery] = useState("");
-  const [editAllergenOpen, setEditAllergenOpen] = useState(false);
-
-  const [editIngredients, setEditIngredients] = useState<string[]>([]);
-  const [editIngredientInput, setEditIngredientInput] = useState("");
-
-  const [editAvailStart, setEditAvailStart] = useState<Date | undefined>(undefined);
-  const [editAvailEnd, setEditAvailEnd] = useState<Date | undefined>(undefined);
-
   const [editCalories, setEditCalories] = useState("");
   const [editProtein, setEditProtein] = useState("");
   const [editCarbs, setEditCarbs] = useState("");
@@ -202,19 +147,8 @@ export default function ChoiceManager({
 
   const [addName, setAddName] = useState("");
   const [addActive, setAddActive] = useState(false);
-  const [addFile, setAddFile] = useState<File | null>(null);
-  const [addPreviewUrl, setAddPreviewUrl] = useState<string | null>(null);
-
+  const [addExtraSticker, setAddExtraSticker] = useState(false);
   const [addAllergens, setAddAllergens] = useState<Allergen[]>([]);
-  const [addAllergenQuery, setAddAllergenQuery] = useState("");
-  const [addAllergenOpen, setAddAllergenOpen] = useState(false);
-
-  const [addIngredients, setAddIngredients] = useState<string[]>([]);
-  const [addIngredientInput, setAddIngredientInput] = useState("");
-
-  const [addAvailStart, setAddAvailStart] = useState<Date | undefined>(undefined);
-  const [addAvailEnd, setAddAvailEnd] = useState<Date | undefined>(undefined);
-
   const [addCalories, setAddCalories] = useState("");
   const [addProtein, setAddProtein] = useState("");
   const [addCarbs, setAddCarbs] = useState("");
@@ -252,32 +186,14 @@ export default function ChoiceManager({
     };
   }, []);
 
-  useEffect(() => {
-    return () => {
-      if (editPreviewUrl?.startsWith("blob:")) URL.revokeObjectURL(editPreviewUrl);
-      if (addPreviewUrl?.startsWith("blob:")) URL.revokeObjectURL(addPreviewUrl);
-    };
-  }, [editPreviewUrl, addPreviewUrl]);
-
   function openEdit(choice: MealChoice) {
     setEditingId(choice.id);
     setEditOpen(true);
 
     setEditName(choice.name);
-    setEditActive(choice.active ?? true);
-    setEditFile(null);
-    setEditPreviewUrl(null);
-
+    setEditActive(choice.active ?? false);
+    setEditExtraSticker(choice.extraSticker ?? false);
     setEditAllergens(choice.allergens ?? []);
-    setEditAllergenQuery("");
-    setEditAllergenOpen(false);
-
-    setEditIngredients(choice.ingredients ?? []);
-    setEditIngredientInput("");
-
-    setEditAvailStart(choice.availStart ? new Date(choice.availStart) : undefined);
-    setEditAvailEnd(choice.availEnd ? new Date(choice.availEnd) : undefined);
-
     setEditCalories(choice.caloriesKcal?.toString() ?? "");
     setEditProtein(choice.proteinG?.toString() ?? "");
     setEditCarbs(choice.carbsG?.toString() ?? "");
@@ -291,30 +207,14 @@ export default function ChoiceManager({
   function closeEdit() {
     setEditOpen(false);
     setEditingId(null);
-    setEditFile(null);
-    if (editPreviewUrl?.startsWith("blob:")) URL.revokeObjectURL(editPreviewUrl);
-    setEditPreviewUrl(null);
   }
 
   function openAdd() {
     setAddOpen(true);
-
     setAddName("");
     setAddActive(false);
-    setAddFile(null);
-    if (addPreviewUrl?.startsWith("blob:")) URL.revokeObjectURL(addPreviewUrl);
-    setAddPreviewUrl(null);
-
+    setAddExtraSticker(false);
     setAddAllergens([]);
-    setAddAllergenQuery("");
-    setAddAllergenOpen(false);
-
-    setAddIngredients([]);
-    setAddIngredientInput("");
-
-    setAddAvailStart(undefined);
-    setAddAvailEnd(undefined);
-
     setAddCalories("");
     setAddProtein("");
     setAddCarbs("");
@@ -327,9 +227,6 @@ export default function ChoiceManager({
 
   function closeAdd() {
     setAddOpen(false);
-    setAddFile(null);
-    if (addPreviewUrl?.startsWith("blob:")) URL.revokeObjectURL(addPreviewUrl);
-    setAddPreviewUrl(null);
   }
 
   async function saveEdit() {
@@ -338,25 +235,11 @@ export default function ChoiceManager({
     try {
       setBusyId(editingChoice.id);
 
-      let imageUrl: string | null | undefined = editingChoice.imageUrl ?? null;
-      if (editFile) {
-        const url = await uploadMealChoiceImage(editFile);
-        imageUrl = url;
-
-        setChoices((prev) =>
-          prev.map((c) => (c.id === editingChoice.id ? { ...c, imageUrl: url } : c))
-        );
-        setEditPreviewUrl(url);
-      }
-
       const updated = await updateMealChoice({
         id: editingChoice.id,
         name: editName.trim(),
         active: editActive,
-        imageUrl,
-        ingredients: editIngredients,
-        availStart: editAvailStart ? editAvailStart.toISOString() : null,
-        availEnd: editAvailEnd ? editAvailEnd.toISOString() : null,
+        extraSticker: editExtraSticker,
         allergenIds: editAllergens.map((a) => a.id),
         caloriesKcal: safeNumOrNull(editCalories),
         proteinG: safeNumOrNull(editProtein),
@@ -389,15 +272,13 @@ export default function ChoiceManager({
         groupId,
         menuId,
         mealOptionId,
-        active: addActive,
+        active: false,
       });
 
-      let updated = await updateMealChoice({
+      const updated = await updateMealChoice({
         id: created.id,
         active: addActive,
-        ingredients: addIngredients,
-        availStart: addAvailStart ? addAvailStart.toISOString() : null,
-        availEnd: addAvailEnd ? addAvailEnd.toISOString() : null,
+        extraSticker: addExtraSticker,
         allergenIds: addAllergens.map((a) => a.id),
         caloriesKcal: safeNumOrNull(addCalories),
         proteinG: safeNumOrNull(addProtein),
@@ -409,11 +290,6 @@ export default function ChoiceManager({
         saltG: safeNumOrNull(addSalt),
       });
 
-      if (addFile) {
-        const url = await uploadMealChoiceImage(addFile);
-        updated = await updateMealChoice({ id: created.id, imageUrl: url });
-      }
-
       setChoices((prev) => [...prev, { ...created, ...updated }]);
       closeAdd();
     } catch (e) {
@@ -423,33 +299,19 @@ export default function ChoiceManager({
     }
   }
 
-  const editHeroSrc =
-    editPreviewUrl ??
-    (editingChoice?.imageUrl && editingChoice.imageUrl.length > 0
-      ? editingChoice.imageUrl
-      : PLACEHOLDER_IMG);
-
-  const addHeroSrc = addPreviewUrl ?? PLACEHOLDER_IMG;
-
   return (
     <div className="mt-2">
       {choices.map((choice) => {
         const isBusy = busyId === choice.id;
         const isActive = choice.active === true;
 
-        const src =
-          choice.imageUrl && choice.imageUrl.length > 0 ? choice.imageUrl : PLACEHOLDER_IMG;
-
         return (
           <div key={choice.id} className="flex items-center justify-between py-2 gap-3">
-            <div className="flex items-center gap-3 min-w-0">
-              <div className="h-12 w-12 rounded-xl overflow-hidden bg-gray-100 border shrink-0">
-                <img src={src} alt={choice.name} className="h-full w-full object-cover" />
-              </div>
-
-              <div className="min-w-0">
-                <div className="truncate">{choice.name}</div>
-                <div className="text-xs text-gray-500">{isActive ? "Active" : "Disabled"}</div>
+            <div className="min-w-0">
+              <div className="truncate">{choice.name}</div>
+              <div className="text-xs text-gray-500">
+                {isActive ? "Active" : "Disabled"}
+                {choice.extraSticker ? " · Extra sticker" : ""}
               </div>
             </div>
 
@@ -491,22 +353,12 @@ export default function ChoiceManager({
           <DialogHeader>
             <DialogTitle>Edit choice</DialogTitle>
             <DialogDescription>
-              Update image, allergens, extras, ingredients, availability, and nutrition.
+              Update name, allergens, nutrition, extra sticker and active status.
             </DialogDescription>
           </DialogHeader>
 
           {editingChoice && (
             <div className="space-y-4">
-              <div className="w-full overflow-hidden rounded-2xl border bg-gray-100">
-                <div className="h-44 sm:h-52 w-full">
-                  <img
-                    src={editHeroSrc}
-                    alt={editingChoice.name}
-                    className="h-full w-full object-cover"
-                  />
-                </div>
-              </div>
-
               <Button
                 type="button"
                 className={`w-full rounded-2xl py-6 text-base font-semibold ${
@@ -537,167 +389,35 @@ export default function ChoiceManager({
                 />
               </div>
 
-              <div className="space-y-2">
-                <div className="text-sm font-medium">Replace image</div>
-                <label className="inline-flex items-center gap-2 text-sm cursor-pointer text-blue-700">
-                  <Upload className="h-4 w-4" />
-                  <span>{editFile ? editFile.name : "Choose file"}</span>
-                  <input
-                    type="file"
-                    accept="image/png,image/jpeg,image/webp"
-                    className="hidden"
-                    disabled={busyId === editingChoice.id}
-                    onChange={(e) => {
-                      const f = e.target.files?.[0] ?? null;
-                      setEditFile(f);
-                      if (editPreviewUrl?.startsWith("blob:")) {
-                        URL.revokeObjectURL(editPreviewUrl);
-                      }
-                      setEditPreviewUrl(f ? URL.createObjectURL(f) : null);
-                      e.currentTarget.value = "";
-                    }}
-                  />
-                </label>
-              </div>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={editExtraSticker}
+                  onChange={(e) => setEditExtraSticker(e.target.checked)}
+                />
+                Extra sticker
+              </label>
 
               <div className="space-y-2">
                 <div className="text-sm font-medium">Allergens</div>
-
-                <div className="flex flex-wrap gap-2">
-                  {editAllergens.map((a) => (
-                    <span
-                      key={a.id}
-                      className="inline-flex items-center gap-1 rounded-full px-3 py-1 text-sm border"
-                      style={pillStyle(a.color)}
-                    >
-                      {a.name}
-                      <button
-                        type="button"
-                        className="opacity-60 hover:opacity-100"
-                        onClick={() =>
-                          setEditAllergens((prev) => prev.filter((x) => x.id !== a.id))
-                        }
-                      >
-                        ✕
-                      </button>
-                    </span>
-                  ))}
-                </div>
-
-                <div className="relative">
-                  <Input
-                    value={editAllergenQuery}
-                    onChange={(e) => setEditAllergenQuery(e.target.value)}
-                    placeholder="Search allergens…"
-                    onFocus={() => setEditAllergenOpen(true)}
-                    onBlur={() => setTimeout(() => setEditAllergenOpen(false), 120)}
-                  />
-
-                  {editAllergenOpen && (
-                    <div className="absolute z-50 mt-1 w-full rounded-xl border bg-white shadow max-h-56 overflow-auto">
-                      {allergenOptions
-                        .filter((a) =>
-                          editAllergenQuery.trim()
-                            ? a.name.toLowerCase().includes(editAllergenQuery.trim().toLowerCase())
-                            : true
-                        )
-                        .map((a) => {
-                          const already = editAllergens.some((x) => x.id === a.id);
-                          return (
-                            <button
-                              type="button"
-                              key={a.id}
-                              className="w-full text-left px-3 py-2 hover:bg-gray-50 disabled:opacity-50 flex items-center justify-between"
-                              disabled={already}
-                              onMouseDown={(ev) => ev.preventDefault()}
-                              onClick={() => {
-                                setEditAllergens((prev) => [...prev, a]);
-                                setEditAllergenQuery("");
-                              }}
-                            >
-                              <span className="flex items-center gap-2">
-                                <span
-                                  className="inline-block h-3 w-3 rounded-full border"
-                                  style={pillStyle(a.color)}
-                                />
-                                {a.name}
-                              </span>
-                              <span className="text-xs text-gray-400">
-                                {already ? "Added" : ""}
-                              </span>
-                            </button>
-                          );
-                        })}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <div className="text-sm font-medium">Extras</div>
-
-                <div className="flex flex-wrap gap-2">
-                  {editIngredients.map((t) => (
-                    <span
-                      key={t}
-                      className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-3 py-1 text-sm"
-                    >
-                      {t}
-                      <button
-                        type="button"
-                        className="opacity-60 hover:opacity-100"
-                        onClick={() => setEditIngredients((prev) => removeTag(prev, t))}
-                      >
-                        ✕
-                      </button>
-                    </span>
-                  ))}
-                </div>
-
-                <Input
-                  value={editIngredientInput}
-                  placeholder="Type Extras and press Enter…"
-                  onChange={(e) => setEditIngredientInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      setEditIngredients((prev) => addTag(prev, editIngredientInput));
-                      setEditIngredientInput("");
-                    }
-                    if (e.key === "Backspace" && !editIngredientInput && editIngredients.length) {
-                      setEditIngredients((prev) => prev.slice(0, -1));
-                    }
-                  }}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <div className="text-sm font-medium">Availability</div>
-
-                <div className="grid grid-cols-2 gap-2">
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button variant="outline" className="w-full rounded-2xl justify-between">
-                        {editAvailStart ? format(editAvailStart, "EEE dd MMM") : "Select date"}
-                        <span className="text-xs text-gray-500">Start</span>
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
-                      <Calendar mode="single" selected={editAvailStart} onSelect={setEditAvailStart} />
-                    </PopoverContent>
-                  </Popover>
-
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button variant="outline" className="w-full rounded-2xl justify-between">
-                        {editAvailEnd ? format(editAvailEnd, "EEE dd MMM") : "Select date"}
-                        <span className="text-xs text-gray-500">End</span>
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
-                      <Calendar mode="single" selected={editAvailEnd} onSelect={setEditAvailEnd} />
-                    </PopoverContent>
-                  </Popover>
+                <div className="grid grid-cols-2 gap-2 rounded-xl border p-3">
+                  {allergenOptions.map((allergen) => {
+                    const checked = editAllergens.some((a) => a.id === allergen.id);
+                    return (
+                      <label key={allergen.id} className="flex items-center gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() =>
+                            setEditAllergens((prev) =>
+                              checked ? prev.filter((a) => a.id !== allergen.id) : [...prev, allergen]
+                            )
+                          }
+                        />
+                        <span style={pillStyle(allergen.color)}>{allergen.name}</span>
+                      </label>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -742,17 +462,11 @@ export default function ChoiceManager({
           <DialogHeader>
             <DialogTitle>Add choice</DialogTitle>
             <DialogDescription>
-              Create a new choice with optional image, allergens, availability, and nutrition.
+              Create a new disabled choice with allergens, nutrition and optional extra sticker.
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4">
-            <div className="w-full overflow-hidden rounded-2xl border bg-gray-100">
-              <div className="h-44 sm:h-52 w-full">
-                <img src={addHeroSrc} alt="New choice" className="h-full w-full object-cover" />
-              </div>
-            </div>
-
             <Button
               type="button"
               className={`w-full rounded-2xl py-6 text-base font-semibold ${
@@ -779,158 +493,35 @@ export default function ChoiceManager({
               <Input value={addName} onChange={(e) => setAddName(e.target.value)} placeholder="New choice name" />
             </div>
 
-            <div className="space-y-2">
-              <div className="text-sm font-medium">Image (optional)</div>
-              <label className="inline-flex items-center gap-2 text-sm cursor-pointer text-blue-700">
-                <Upload className="h-4 w-4" />
-                <span>{addFile ? addFile.name : "Choose file"}</span>
-                <input
-                  type="file"
-                  accept="image/png,image/jpeg,image/webp"
-                  className="hidden"
-                  disabled={busyId === "__add__"}
-                  onChange={(e) => {
-                    const f = e.target.files?.[0] ?? null;
-                    setAddFile(f);
-                    if (addPreviewUrl?.startsWith("blob:")) URL.revokeObjectURL(addPreviewUrl);
-                    setAddPreviewUrl(f ? URL.createObjectURL(f) : null);
-                    e.currentTarget.value = "";
-                  }}
-                />
-              </label>
-            </div>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={addExtraSticker}
+                onChange={(e) => setAddExtraSticker(e.target.checked)}
+              />
+              Extra sticker
+            </label>
 
             <div className="space-y-2">
               <div className="text-sm font-medium">Allergens</div>
-
-              <div className="flex flex-wrap gap-2">
-                {addAllergens.map((a) => (
-                  <span
-                    key={a.id}
-                    className="inline-flex items-center gap-1 rounded-full px-3 py-1 text-sm border"
-                    style={pillStyle(a.color)}
-                  >
-                    {a.name}
-                    <button
-                      type="button"
-                      className="opacity-60 hover:opacity-100"
-                      onClick={() => setAddAllergens((prev) => prev.filter((x) => x.id !== a.id))}
-                    >
-                      ✕
-                    </button>
-                  </span>
-                ))}
-              </div>
-
-              <div className="relative">
-                <Input
-                  value={addAllergenQuery}
-                  onChange={(e) => setAddAllergenQuery(e.target.value)}
-                  placeholder="Search allergens…"
-                  onFocus={() => setAddAllergenOpen(true)}
-                  onBlur={() => setTimeout(() => setAddAllergenOpen(false), 120)}
-                />
-
-                {addAllergenOpen && (
-                  <div className="absolute z-50 mt-1 w-full rounded-xl border bg-white shadow max-h-56 overflow-auto">
-                    {allergenOptions
-                      .filter((a) =>
-                        addAllergenQuery.trim()
-                          ? a.name.toLowerCase().includes(addAllergenQuery.trim().toLowerCase())
-                          : true
-                      )
-                      .map((a) => {
-                        const already = addAllergens.some((x) => x.id === a.id);
-                        return (
-                          <button
-                            type="button"
-                            key={a.id}
-                            className="w-full text-left px-3 py-2 hover:bg-gray-50 disabled:opacity-50 flex items-center justify-between"
-                            disabled={already}
-                            onMouseDown={(ev) => ev.preventDefault()}
-                            onClick={() => {
-                              setAddAllergens((prev) => [...prev, a]);
-                              setAddAllergenQuery("");
-                            }}
-                          >
-                            <span className="flex items-center gap-2">
-                              <span className="inline-block h-3 w-3 rounded-full border" style={pillStyle(a.color)} />
-                              {a.name}
-                            </span>
-                            <span className="text-xs text-gray-400">{already ? "Added" : ""}</span>
-                          </button>
-                        );
-                      })}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <div className="text-sm font-medium">Extras</div>
-
-              <div className="flex flex-wrap gap-2">
-                {addIngredients.map((t) => (
-                  <span
-                    key={t}
-                    className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-3 py-1 text-sm"
-                  >
-                    {t}
-                    <button
-                      type="button"
-                      className="opacity-60 hover:opacity-100"
-                      onClick={() => setAddIngredients((prev) => removeTag(prev, t))}
-                    >
-                      ✕
-                    </button>
-                  </span>
-                ))}
-              </div>
-
-              <Input
-                value={addIngredientInput}
-                placeholder="Type Extras and press Enter…"
-                onChange={(e) => setAddIngredientInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    setAddIngredients((prev) => addTag(prev, addIngredientInput));
-                    setAddIngredientInput("");
-                  }
-                  if (e.key === "Backspace" && !addIngredientInput && addIngredients.length) {
-                    setAddIngredients((prev) => prev.slice(0, -1));
-                  }
-                }}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <div className="text-sm font-medium">Availability</div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button variant="outline" className="w-full rounded-2xl justify-between">
-                      {addAvailStart ? format(addAvailStart, "EEE dd MMM") : "Select date"}
-                      <span className="text-xs text-gray-500">Start</span>
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar mode="single" selected={addAvailStart} onSelect={setAddAvailStart} />
-                  </PopoverContent>
-                </Popover>
-
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button variant="outline" className="w-full rounded-2xl justify-between">
-                      {addAvailEnd ? format(addAvailEnd, "EEE dd MMM") : "Select date"}
-                      <span className="text-xs text-gray-500">End</span>
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar mode="single" selected={addAvailEnd} onSelect={setAddAvailEnd} />
-                  </PopoverContent>
-                </Popover>
+              <div className="grid grid-cols-2 gap-2 rounded-xl border p-3">
+                {allergenOptions.map((allergen) => {
+                  const checked = addAllergens.some((a) => a.id === allergen.id);
+                  return (
+                    <label key={allergen.id} className="flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() =>
+                          setAddAllergens((prev) =>
+                            checked ? prev.filter((a) => a.id !== allergen.id) : [...prev, allergen]
+                          )
+                        }
+                      />
+                      <span style={pillStyle(allergen.color)}>{allergen.name}</span>
+                    </label>
+                  );
+                })}
               </div>
             </div>
 

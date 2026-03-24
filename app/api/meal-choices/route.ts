@@ -1,126 +1,128 @@
-// app/api/meal-choices/route.ts
 import { auth } from "@/auth";
 import { prisma } from "@/lib/db";
+import { NextResponse } from "next/server";
 
 function isAdmin(user: any) {
-  return user && user.role === "ADMIN";
+  return user?.role === "ADMIN";
 }
 
-export const GET = auth(async (req) => {
-  if (!req.auth || !isAdmin(req.auth.user)) {
-    return new Response("Unauthorized", { status: 401 });
-  }
+function parseNullableNumber(v: any) {
+  if (v === null || v === undefined || v === "") return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+function mapChoice(choice: any) {
+  return {
+    id: choice.id,
+    name: choice.name,
+    active: choice.active,
+    extraSticker: choice.extraSticker,
+    caloriesKcal: choice.caloriesKcal ?? null,
+    proteinG: choice.proteinG ?? null,
+    carbsG: choice.carbsG ?? null,
+    sugarsG: choice.sugarsG ?? null,
+    fatG: choice.fatG ?? null,
+    saturatesG: choice.saturatesG ?? null,
+    fibreG: choice.fibreG ?? null,
+    saltG: choice.saltG ?? null,
+    allergens: choice.allergens.map((a: any) => ({
+      id: a.id,
+      name: a.name,
+      color: null,
+    })),
+  };
+}
+
+export const GET = auth(async (req: Request) => {
+  const user = (req as any).auth?.user;
+  if (!user) return new Response("Unauthorized", { status: 401 });
 
   const { searchParams } = new URL(req.url);
-  const groupId = searchParams.get("groupId")?.trim() || null;
-  const menuId = searchParams.get("menuId")?.trim() || null;
+  const groupId = searchParams.get("groupId")?.trim();
 
-  if (!menuId) {
-    return new Response("menuId is required", { status: 400 });
-  }
+  if (!groupId) return new Response("groupId required", { status: 400 });
 
-  const mealChoices = await prisma.mealChoice.findMany({
-    where: {
-      ...(groupId ? { groupId } : {}),
-      menuLinks: { some: { menuId } },
+  const choices = await prisma.mealChoice.findMany({
+    where: { groupId },
+    orderBy: { name: "asc" },
+    include: {
+      allergens: true,
     },
-    include: { allergens: true },
-    orderBy: { createdAt: "asc" },
   });
 
-  return Response.json(mealChoices);
+  return NextResponse.json(choices.map(mapChoice));
 });
 
-export const POST = auth(async (req) => {
-  if (!req.auth || !isAdmin(req.auth.user)) {
-    return new Response("Unauthorized", { status: 401 });
-  }
+export const POST = auth(async (req: Request) => {
+  const user = (req as any).auth?.user;
+  if (!user || !isAdmin(user)) return new Response("Unauthorized", { status: 401 });
 
-  const data = await req.json();
+  const body = await req.json().catch(() => null);
+  const name = (body?.name ?? "").trim();
+  const groupId = (body?.groupId ?? "").trim();
+  const active = !!body?.active;
 
-  const {
-    menuId,
-    mealOptionId, // 🆕 NEW
-    active,
-    ...safe
-  } = data;
+  if (!name) return new Response("name required", { status: 400 });
+  if (!groupId) return new Response("groupId required", { status: 400 });
 
-  if (!menuId) return new Response("menuId is required", { status: 400 });
-  if (!safe?.groupId) return new Response("groupId is required", { status: 400 });
-  if (!safe?.name || !String(safe.name).trim()) {
-    return new Response("name is required", { status: 400 });
-  }
-
-  const created = await prisma.$transaction(async (tx) => {
-    const mealChoice = await tx.mealChoice.create({
-      data: {
-        ...safe,
-      },
-      include: { allergens: true },
-    });
-
-    // ✅ always link to menu (existing behaviour)
-    await tx.menuMealChoice.create({
-      data: { menuId, choiceId: mealChoice.id },
-    });
-
-    // 🆕 OPTIONAL: ensure group is linked to meal option
-    if (mealOptionId) {
-      const existing = await tx.mealOptionMealGroup.findFirst({
-        where: {
-          mealOptionId,
-          groupId: safe.groupId,
-        },
-      });
-
-      if (!existing) {
-        await tx.mealOptionMealGroup.create({
-          data: {
-            mealOptionId,
-            groupId: safe.groupId,
-          },
-        });
-      }
-    }
-
-    return mealChoice;
-  });
-
-  return Response.json(created);
-});
-
-export const PUT = auth(async (req) => {
-  if (!req.auth || !isAdmin(req.auth.user)) {
-    return new Response("Unauthorized", { status: 401 });
-  }
-
-  const data = await req.json();
-  const { id, allergenIds, ...rest } = data;
-
-  const mealChoice = await prisma.mealChoice.update({
-    where: { id },
+  const created = await prisma.mealChoice.create({
     data: {
-      ...rest,
-      ...(Array.isArray(allergenIds)
-        ? { allergens: { set: allergenIds.map((aid: string) => ({ id: aid })) } }
-        : {}),
+      name,
+      groupId,
+      active,
+      extraSticker: false,
     },
-    include: { allergens: true },
+    include: {
+      allergens: true,
+    },
   });
 
-  return Response.json(mealChoice);
+  return NextResponse.json(mapChoice(created), { status: 201 });
 });
 
-export const DELETE = auth(async (req) => {
-  if (!req.auth || !isAdmin(req.auth.user)) {
-    return new Response("Unauthorized", { status: 401 });
+export const PUT = auth(async (req: Request) => {
+  const user = (req as any).auth?.user;
+  if (!user || !isAdmin(user)) return new Response("Unauthorized", { status: 401 });
+
+  const body = await req.json().catch(() => null);
+  const id = (body?.id ?? "").trim();
+  const name = typeof body?.name === "string" ? body.name.trim() : undefined;
+  const active = typeof body?.active === "boolean" ? body.active : undefined;
+  const extraSticker =
+    typeof body?.extraSticker === "boolean" ? body.extraSticker : undefined;
+  const allergenIds = Array.isArray(body?.allergenIds) ? body.allergenIds : undefined;
+
+  if (!id) return new Response("id required", { status: 400 });
+
+  const data: any = {};
+
+  if (name !== undefined && name !== "") data.name = name;
+  if (active !== undefined) data.active = active;
+  if (extraSticker !== undefined) data.extraSticker = extraSticker;
+
+  if ("caloriesKcal" in (body ?? {})) data.caloriesKcal = parseNullableNumber(body.caloriesKcal);
+  if ("proteinG" in (body ?? {})) data.proteinG = parseNullableNumber(body.proteinG);
+  if ("carbsG" in (body ?? {})) data.carbsG = parseNullableNumber(body.carbsG);
+  if ("sugarsG" in (body ?? {})) data.sugarsG = parseNullableNumber(body.sugarsG);
+  if ("fatG" in (body ?? {})) data.fatG = parseNullableNumber(body.fatG);
+  if ("saturatesG" in (body ?? {})) data.saturatesG = parseNullableNumber(body.saturatesG);
+  if ("fibreG" in (body ?? {})) data.fibreG = parseNullableNumber(body.fibreG);
+  if ("saltG" in (body ?? {})) data.saltG = parseNullableNumber(body.saltG);
+
+  if (allergenIds !== undefined) {
+    data.allergens = {
+      set: allergenIds.map((id: string) => ({ id })),
+    };
   }
 
-  const { id } = await req.json();
+  const updated = await prisma.mealChoice.update({
+    where: { id },
+    data,
+    include: {
+      allergens: true,
+    },
+  });
 
-  await prisma.menuMealChoice.deleteMany({ where: { choiceId: id } });
-
-  await prisma.mealChoice.delete({ where: { id } });
-
-  return Response.json({ success: true });
+  return NextResponse.json(mapChoice(updated));
 });

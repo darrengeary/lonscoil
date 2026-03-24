@@ -1,16 +1,27 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import ChoiceManager from "./ChoiceManager";
-import { Plus } from "lucide-react";
+import { Pencil, Plus, ToggleLeft, ToggleRight } from "lucide-react";
 
-export type PrismaMealChoice = {
+export type MealChoiceListItem = {
   id: string;
   name: string;
   groupId: string;
+  active?: boolean;
+  extraSticker?: boolean;
+  caloriesKcal?: number | null;
+  proteinG?: number | null;
+  carbsG?: number | null;
+  sugarsG?: number | null;
+  fatG?: number | null;
+  saturatesG?: number | null;
+  fibreG?: number | null;
+  saltG?: number | null;
+  allergens?: { id: string; name: string }[];
   createdAt: string;
   updatedAt: string;
 };
@@ -19,7 +30,8 @@ export interface MealGroup {
   id: string;
   name: string;
   maxSelections: number;
-  choices?: PrismaMealChoice[];
+  active: boolean;
+  choices?: MealChoiceListItem[];
 }
 
 interface Props {
@@ -29,6 +41,11 @@ interface Props {
   onGroupsChange?: (groups: MealGroup[]) => void;
 }
 
+type GroupSummary = {
+  id: string;
+  name: string;
+};
+
 export default function MealGroupManager({
   menuId,
   mealOptionId,
@@ -36,44 +53,118 @@ export default function MealGroupManager({
   onGroupsChange,
 }: Props) {
   const [groups, setGroups] = useState<MealGroup[]>(initialGroups ?? []);
+  const [allGroups, setAllGroups] = useState<GroupSummary[]>(
+    () => (initialGroups ?? []).map((g) => ({ id: g.id, name: g.name }))
+  );
+
   const [modalOpen, setModalOpen] = useState(false);
-  const [newGroupName, setNewGroupName] = useState("");
-  const [newGroupMaxSelections, setNewGroupMaxSelections] = useState(1);
+  const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
+  const [groupName, setGroupName] = useState("");
+  const [groupMaxSelections, setGroupMaxSelections] = useState(1);
+  const [groupActive, setGroupActive] = useState(false);
+  const [duplicateFromGroupId, setDuplicateFromGroupId] = useState("");
+
   const inputRef = useRef<HTMLInputElement>(null);
+
+  const isEdit = !!editingGroupId;
+
+  const canSave = useMemo(
+    () => groupName.trim().length >= 2 || (!!duplicateFromGroupId && !isEdit),
+    [groupName, duplicateFromGroupId, isEdit]
+  );
 
   function updateGroups(next: MealGroup[]) {
     setGroups(next);
     onGroupsChange?.(next);
   }
 
+  function openCreateGroup() {
+    setEditingGroupId(null);
+    setGroupName("");
+    setGroupMaxSelections(1);
+    setGroupActive(false);
+    setDuplicateFromGroupId("");
+    setModalOpen(true);
+    setTimeout(() => inputRef.current?.focus(), 0);
+  }
+
+  function openEditGroup(group: MealGroup) {
+    setEditingGroupId(group.id);
+    setGroupName(group.name);
+    setGroupMaxSelections(group.maxSelections);
+    setGroupActive(group.active);
+    setDuplicateFromGroupId("");
+    setModalOpen(true);
+    setTimeout(() => inputRef.current?.focus(), 0);
+  }
+
+  function closeModal() {
+    setModalOpen(false);
+    setEditingGroupId(null);
+    setGroupName("");
+    setGroupMaxSelections(1);
+    setGroupActive(false);
+    setDuplicateFromGroupId("");
+  }
+
   async function saveGroup() {
-    const payload = {
-      name: newGroupName.trim(),
-      maxSelections: newGroupMaxSelections,
-      mealOptionId,
-    };
+    const body = isEdit
+      ? {
+          id: editingGroupId,
+          name: groupName.trim(),
+          maxSelections: groupMaxSelections,
+          active: groupActive,
+        }
+      : {
+          name: groupName.trim(),
+          maxSelections: groupMaxSelections,
+          active: false,
+          mealOptionId,
+          duplicateFromGroupId: duplicateFromGroupId || null,
+        };
 
     const res = await fetch("/api/mealgroups", {
-      method: "POST",
+      method: isEdit ? "PUT" : "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(body),
     });
 
     if (!res.ok) return;
 
-    const created: MealGroup = await res.json();
-    updateGroups([...groups, created]);
+    const saved: MealGroup = await res.json();
 
-    setNewGroupName("");
-    setNewGroupMaxSelections(1);
-    setModalOpen(false);
-    setTimeout(() => inputRef.current?.focus(), 0);
+    if (isEdit) {
+      updateGroups(groups.map((g) => (g.id === saved.id ? { ...g, ...saved } : g)));
+    } else {
+      updateGroups([...groups, saved]);
+      setAllGroups((prev) => [...prev, { id: saved.id, name: saved.name }]);
+    }
+
+    closeModal();
+  }
+
+  async function toggleGroupActive(group: MealGroup) {
+    const res = await fetch("/api/mealgroups", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: group.id,
+        name: group.name,
+        maxSelections: group.maxSelections,
+        active: !group.active,
+      }),
+    });
+
+    if (!res.ok) return;
+
+    const saved: MealGroup = await res.json();
+    updateGroups(groups.map((g) => (g.id === saved.id ? { ...g, ...saved } : g)));
   }
 
   return (
     <div className="space-y-4">
       <div className="flex justify-between items-center">
-        <Button onClick={() => setModalOpen(true)} type="button">
+        <Button onClick={openCreateGroup} type="button">
           <Plus className="mr-2 h-4 w-4" />
           New Meal Group
         </Button>
@@ -82,51 +173,75 @@ export default function MealGroupManager({
       {modalOpen && (
         <div className="fixed inset-0 bg-black/20 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl shadow-xl p-6 min-w-[320px] w-full max-w-md space-y-4 border">
-            <h2 className="text-lg font-semibold">Add Meal Group</h2>
+            <h2 className="text-lg font-semibold">{isEdit ? "Edit Meal Group" : "Add Meal Group"}</h2>
 
-            <div className="flex flex-col gap-3">
-              <div className="flex flex-col sm:flex-row sm:items-center gap-2 w-full">
-                <label
-                  className="text-xs font-medium text-gray-600 min-w-[100px]"
-                  htmlFor="mealgroup-name"
-                >
-                  Name
-                </label>
+            <div className="space-y-3">
+              {!isEdit && (
+                <div className="space-y-1">
+                  <div className="text-xs font-semibold text-gray-600">Duplicate from existing group</div>
+                  <select
+                    value={duplicateFromGroupId}
+                    onChange={(e) => setDuplicateFromGroupId(e.target.value)}
+                    className="w-full border rounded-xl px-3 py-2 text-sm bg-white"
+                  >
+                    <option value="">No duplicate</option>
+                    {allGroups.map((group) => (
+                      <option key={group.id} value={group.id}>
+                        {group.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              <div className="space-y-1">
+                <div className="text-xs font-semibold text-gray-600">Group name</div>
                 <Input
-                  id="mealgroup-name"
                   ref={inputRef}
-                  placeholder="e.g. Side, Drink, Sandwich Extras"
-                  value={newGroupName}
-                  onChange={(e) => setNewGroupName(e.target.value)}
-                  className="bg-white w-full"
+                  placeholder="e.g. Drink, Side, Sandwich Extras"
+                  value={groupName}
+                  onChange={(e) => setGroupName(e.target.value)}
                 />
               </div>
 
-              <div className="flex flex-col sm:flex-row sm:items-center gap-2 w-full">
-                <label className="text-xs font-medium text-gray-600 min-w-[90px]">
-                  Max Selections
-                </label>
+              <div className="space-y-1">
+                <div className="text-xs font-semibold text-gray-600">Max selections</div>
                 <Input
                   type="number"
                   min={1}
-                  value={newGroupMaxSelections}
+                  value={groupMaxSelections}
                   onChange={(e) =>
-                    setNewGroupMaxSelections(Math.max(1, Number(e.target.value) || 1))
+                    setGroupMaxSelections(Math.max(1, Number(e.target.value) || 1))
                   }
-                  className="bg-white w-full"
                 />
               </div>
 
-              <div className="flex flex-col sm:flex-row justify-end gap-2 pt-2">
-                <Button variant="outline" onClick={() => setModalOpen(false)} type="button">
+              <Button
+                type="button"
+                className={`w-full rounded-2xl py-6 text-base font-semibold ${
+                  groupActive
+                    ? "bg-green-600 hover:bg-green-700 text-white"
+                    : "bg-red-600 hover:bg-red-700 text-white"
+                }`}
+                onClick={() => setGroupActive((v) => !v)}
+              >
+                {groupActive ? (
+                  <span className="inline-flex items-center gap-2">
+                    <ToggleRight /> Active
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-2">
+                    <ToggleLeft /> Disabled
+                  </span>
+                )}
+              </Button>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <Button variant="outline" onClick={closeModal} type="button">
                   Cancel
                 </Button>
-                <Button
-                  onClick={saveGroup}
-                  disabled={!newGroupName.trim() || newGroupMaxSelections <= 0}
-                  type="button"
-                >
-                  Publish
+                <Button onClick={saveGroup} disabled={!canSave} type="button">
+                  {isEdit ? "Save" : "Create Disabled"}
                 </Button>
               </div>
             </div>
@@ -139,10 +254,17 @@ export default function MealGroupManager({
           {groups.map((group) => (
             <Card
               key={group.id}
-              className="relative flex flex-col bg-white border border-transparent rounded-3xl p-7 shadow-sm hover:shadow-lg transition-all duration-150"
+              className={`relative flex flex-col border rounded-3xl p-7 shadow-sm hover:shadow-lg transition-all duration-150 ${
+                group.active ? "bg-white" : "bg-gray-50 opacity-60"
+              }`}
             >
               <div className="flex items-center justify-between mb-4">
-                <div className="text-xl font-bold text-[#27364B] truncate">{group.name}</div>
+                <div className="min-w-0">
+                  <div className="text-xl font-bold text-[#27364B] truncate">{group.name}</div>
+                  <div className="text-xs text-gray-500">
+                    {group.active ? "Active" : "Disabled"}
+                  </div>
+                </div>
 
                 <div className="px-3 py-1 rounded-full bg-[#FFE6E6] text-[#DC2626] font-semibold text-sm flex items-center ml-3">
                   Max:
@@ -150,9 +272,21 @@ export default function MealGroupManager({
                 </div>
               </div>
 
+              <div className="flex gap-2 mb-4">
+                <Button variant="outline" size="sm" onClick={() => toggleGroupActive(group)} type="button">
+                  {group.active ? <ToggleRight className="h-4 w-4" /> : <ToggleLeft className="h-4 w-4" />}
+                </Button>
+
+                <Button variant="outline" size="sm" onClick={() => openEditGroup(group)} type="button">
+                  <Pencil className="h-4 w-4 mr-2" />
+                  Edit
+                </Button>
+              </div>
+
               <ChoiceManager
                 menuId={menuId}
                 groupId={group.id}
+                mealOptionId={mealOptionId}
                 initialChoices={group.choices}
                 disabled={false}
               />

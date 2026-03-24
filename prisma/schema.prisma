@@ -191,9 +191,9 @@ model Pupil {
 /// ------------------------------------------------------
 
 model MealGroup {
-  id            String @id @default(cuid())
+  id            String  @id @default(cuid())
   name          String
-  maxSelections Int    @default(1)
+  maxSelections Int     @default(1)
   active        Boolean @default(false)
 
   choices   MealChoice[]
@@ -214,7 +214,7 @@ model MealChoice {
   groupId String
 
   allergens   Allergen[]
-  ingredients String[]   @default([])
+  ingredients String[] @default([])
 
   availStart DateTime?
   availEnd   DateTime?
@@ -265,14 +265,14 @@ model Menu {
 }
 
 model MealOption {
-  id     String @id @default(cuid())
-  name   String
+  id   String @id @default(cuid())
+  name String
 
   menuId String
   menu   Menu   @relation(fields: [menuId], references: [id], onDelete: Cascade)
 
-  imageUrl String? @db.Text
-  active   Boolean @default(false)
+  imageUrl String?  @db.Text
+  active   Boolean  @default(false)
 
   availStart DateTime?
   availEnd   DateTime?
@@ -288,7 +288,7 @@ model MealOption {
 
   allergens Allergen[]
 
-  // keep column for now if it already exists in DB, but stop using it in code
+  // keep the column if it already exists, but stop using it
   stickerCount Int @default(1)
 
   groupLinks MealOptionMealGroup[]
