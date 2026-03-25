@@ -5,10 +5,10 @@ import MenuManager, {
 } from "@/components/supplier/MenuManager";
 
 export default async function AdminPage() {
-  const [menus, allergens] = await Promise.all([
+  const [menusRaw, allergens] = await Promise.all([
     prisma.menu.findMany({
       orderBy: { name: "asc" },
-      include: ({
+      include: {
         schoolLinks: {
           include: {
             school: {
@@ -28,7 +28,7 @@ export default async function AdminPage() {
                 name: true,
               },
             },
-            groupLinks: {
+            MealOptionMealGroup: {
               include: {
                 group: {
                   include: {
@@ -64,7 +64,7 @@ export default async function AdminPage() {
             },
           },
         },
-      } as any),
+      },
     }),
     prisma.allergen.findMany({
       orderBy: { name: "asc" },
@@ -75,7 +75,7 @@ export default async function AdminPage() {
     }),
   ]);
 
-  const initialSections: MenuSection[] = menus.map((menu) => ({
+  const initialSections: MenuSection[] = menusRaw.map((menu) => ({
     menu: {
       id: menu.id,
       name: menu.name,
@@ -91,8 +91,8 @@ export default async function AdminPage() {
       menuId: mealOption.menuId,
       active: mealOption.active,
       imageUrl: mealOption.imageUrl,
-      availStart: mealOption.availStart?.toISOString() ?? null,
-      availEnd: mealOption.availEnd?.toISOString() ?? null,
+      availStart: mealOption.availStart ? new Date(mealOption.availStart).toISOString() : null,
+      availEnd: mealOption.availEnd ? new Date(mealOption.availEnd).toISOString() : null,
       caloriesKcal: mealOption.caloriesKcal ?? null,
       proteinG: mealOption.proteinG ?? null,
       carbsG: mealOption.carbsG ?? null,
@@ -105,33 +105,39 @@ export default async function AdminPage() {
         id: a.id,
         name: a.name,
       })),
-      groups: mealOption.groupLinks.map((link) => ({
-        id: link.group.id,
-        name: link.group.name,
-        maxSelections: link.group.maxSelections,
-        active: link.group.active,
-        choices: link.group.choices.map((choice) => ({
-          id: choice.id,
-          name: choice.name,
-          groupId: choice.groupId,
-          active: choice.active,
-          extraSticker: choice.extraSticker,
-          caloriesKcal: choice.caloriesKcal ?? null,
-          proteinG: choice.proteinG ?? null,
-          carbsG: choice.carbsG ?? null,
-          sugarsG: choice.sugarsG ?? null,
-          fatG: choice.fatG ?? null,
-          saturatesG: choice.saturatesG ?? null,
-          fibreG: choice.fibreG ?? null,
-          saltG: choice.saltG ?? null,
-          allergens: choice.allergens.map((a) => ({
-            id: a.id,
-            name: a.name,
+      groups: mealOption.MealOptionMealGroup
+        .map((link) => link.group)
+        .sort((a, b) => {
+          if (a.active !== b.active) return a.active ? -1 : 1;
+          return a.name.localeCompare(b.name);
+        })
+        .map((group) => ({
+          id: group.id,
+          name: group.name,
+          maxSelections: group.maxSelections,
+          active: group.active,
+          choices: group.choices.map((choice) => ({
+            id: choice.id,
+            name: choice.name,
+            groupId: choice.groupId,
+            active: choice.active,
+            extraSticker: choice.extraSticker,
+            caloriesKcal: choice.caloriesKcal ?? null,
+            proteinG: choice.proteinG ?? null,
+            carbsG: choice.carbsG ?? null,
+            sugarsG: choice.sugarsG ?? null,
+            fatG: choice.fatG ?? null,
+            saturatesG: choice.saturatesG ?? null,
+            fibreG: choice.fibreG ?? null,
+            saltG: choice.saltG ?? null,
+            allergens: choice.allergens.map((a) => ({
+              id: a.id,
+              name: a.name,
+            })),
+            createdAt: choice.createdAt.toISOString(),
+            updatedAt: choice.updatedAt.toISOString(),
           })),
-          createdAt: choice.createdAt.toISOString(),
-          updatedAt: choice.updatedAt.toISOString(),
         })),
-      })),
     })),
   }));
 
@@ -140,5 +146,10 @@ export default async function AdminPage() {
     name: a.name,
   }));
 
-  return <MenuManager initialSections={initialSections} allAllergens={allAllergens} />;
+  return (
+    <MenuManager
+      initialSections={initialSections}
+      allAllergens={allAllergens}
+    />
+  );
 }

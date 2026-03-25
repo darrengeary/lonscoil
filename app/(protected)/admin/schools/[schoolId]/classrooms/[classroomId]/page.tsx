@@ -9,8 +9,6 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useSession } from "next-auth/react";
 import { toast } from "@/components/ui/use-toast";
-import PrintRegistration from "@/components/supplier/PrintRegistration";
-
 /* ---------------- STATUS HELPERS ---------------- */
 
 function statusLabel(status: unknown) {
@@ -415,10 +413,6 @@ ${schoolName}`;
         </Link>
 
         <div className="flex gap-2">
-          <Button onClick={() => setShowPrintModal(true)}>
-            <Printer className="mr-2 h-4 w-4" />
-            Print Letters
-          </Button>
 
           <Button onClick={() => setShowAddModal(true)}>
             <Plus className="mr-2 h-4 w-4" />
@@ -426,16 +420,6 @@ ${schoolName}`;
           </Button>
         </div>
       </div>
-
-      <PrintRegistration
-        open={showPrintModal}
-        onClose={() => setShowPrintModal(false)}
-        pupils={pupils}
-        classroomName={classroom?.name || ""}
-        schoolName={schoolName}
-        letterTemplate={letterTemplate}
-        logoUrl={logoUrl}
-      />
 
       <div className="flex items-center gap-2">
         <Button

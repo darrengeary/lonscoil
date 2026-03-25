@@ -5,7 +5,15 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import ChoiceManager from "./ChoiceManager";
-import { Pencil, Plus, ToggleLeft, ToggleRight } from "lucide-react";
+import { Pencil, Plus, ToggleLeft, ToggleRight, AlertTriangle } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 export type MealChoiceListItem = {
   id: string;
@@ -63,6 +71,9 @@ export default function MealGroupManager({
   const [groupMaxSelections, setGroupMaxSelections] = useState(1);
   const [groupActive, setGroupActive] = useState(false);
   const [duplicateFromGroupId, setDuplicateFromGroupId] = useState("");
+
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [pendingGroup, setPendingGroup] = useState<MealGroup | null>(null);
 
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -161,12 +172,24 @@ export default function MealGroupManager({
     updateGroups(groups.map((g) => (g.id === saved.id ? { ...g, ...saved } : g)));
   }
 
+  function askToggleGroup(group: MealGroup) {
+    setPendingGroup(group);
+    setConfirmOpen(true);
+  }
+
+  async function confirmToggleGroup() {
+    if (!pendingGroup) return;
+    await toggleGroupActive(pendingGroup);
+    setConfirmOpen(false);
+    setPendingGroup(null);
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex justify-between items-center">
         <Button onClick={openCreateGroup} type="button">
           <Plus className="mr-2 h-4 w-4" />
-          New Meal Group
+          New Add On
         </Button>
       </div>
 
@@ -210,9 +233,7 @@ export default function MealGroupManager({
                   type="number"
                   min={1}
                   value={groupMaxSelections}
-                  onChange={(e) =>
-                    setGroupMaxSelections(Math.max(1, Number(e.target.value) || 1))
-                  }
+                  onChange={(e) => setGroupMaxSelections(Math.max(1, Number(e.target.value) || 1))}
                 />
               </div>
 
@@ -241,7 +262,7 @@ export default function MealGroupManager({
                   Cancel
                 </Button>
                 <Button onClick={saveGroup} disabled={!canSave} type="button">
-                  {isEdit ? "Save" : "Create Disabled"}
+                  {isEdit ? "Save" : "Create"}
                 </Button>
               </div>
             </div>
@@ -261,9 +282,7 @@ export default function MealGroupManager({
               <div className="flex items-center justify-between mb-4">
                 <div className="min-w-0">
                   <div className="text-xl font-bold text-[#27364B] truncate">{group.name}</div>
-                  <div className="text-xs text-gray-500">
-                    {group.active ? "Active" : "Disabled"}
-                  </div>
+                  <div className="text-xs text-gray-500">{group.active ? "Active" : "Disabled"}</div>
                 </div>
 
                 <div className="px-3 py-1 rounded-full bg-[#FFE6E6] text-[#DC2626] font-semibold text-sm flex items-center ml-3">
@@ -273,7 +292,16 @@ export default function MealGroupManager({
               </div>
 
               <div className="flex gap-2 mb-4">
-                <Button variant="outline" size="sm" onClick={() => toggleGroupActive(group)} type="button">
+                <Button
+                  size="sm"
+                  type="button"
+                  className={`rounded-xl ${
+                    group.active
+                      ? "bg-green-600 hover:bg-green-700 text-white"
+                      : "bg-red-600 hover:bg-red-700 text-white"
+                  }`}
+                  onClick={() => askToggleGroup(group)}
+                >
                   {group.active ? <ToggleRight className="h-4 w-4" /> : <ToggleLeft className="h-4 w-4" />}
                 </Button>
 
@@ -294,6 +322,38 @@ export default function MealGroupManager({
           ))}
         </div>
       </div>
+
+      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <DialogContent className="sm:max-w-md bg-white text-slate-900 shadow-xl rounded-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-amber-500" />
+              Confirm status change
+            </DialogTitle>
+            <DialogDescription>
+              {pendingGroup
+                ? `Are you sure you want to ${pendingGroup.active ? "disable" : "enable"} "${pendingGroup.name}"?`
+                : "Are you sure?"}
+            </DialogDescription>
+          </DialogHeader>
+
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setConfirmOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={confirmToggleGroup}
+              className={
+                pendingGroup?.active
+                  ? "bg-red-600 hover:bg-red-700 text-white"
+                  : "bg-green-600 hover:bg-green-700 text-white"
+              }
+            >
+              {pendingGroup?.active ? "Disable" : "Enable"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

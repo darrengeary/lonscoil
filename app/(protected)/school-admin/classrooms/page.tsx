@@ -158,7 +158,7 @@ export default function SchoolClassroomsPage() {
           <div className="flex flex-col items-center py-16 gap-3 text-muted-foreground">
             <Loader className="w-7 h-7 animate-spin" />
             <div className="font-medium">Loading classroom data…</div>
-            <div className="text-xs">Hang tight, fetching records from the server.</div>
+            <div className="text-xs">Fetching records from the server.</div>
           </div>
         ) : classrooms.length === 0 ? (
           <div className="flex flex-col items-center py-20 gap-3 text-muted-foreground">

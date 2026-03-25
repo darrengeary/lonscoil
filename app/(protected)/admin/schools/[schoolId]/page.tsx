@@ -12,6 +12,7 @@ import {
   Check,
   X,
   Loader2,
+  Printer,
 } from "lucide-react";
 import { DashboardHeader } from "@/components/dashboard/header";
 import { Card } from "@/components/ui/card";
@@ -19,6 +20,7 @@ import { Button } from "@/components/ui/button";
 import { useSession } from "next-auth/react";
 import { toast } from "@/components/ui/use-toast";
 import { Input } from "@/components/ui/input";
+import PrintRegistrationLettersModal from "@/components/supplier/PrintRegistrationLettersModal";
 
 type Classroom = {
   School: any;
@@ -49,6 +51,8 @@ export default function SchoolClassroomsPage() {
 
   const [addCounts, setAddCounts] = useState<Record<string, number>>({});
   const [bulkAdding, setBulkAdding] = useState(false);
+
+  const [showPrintModal, setShowPrintModal] = useState(false);
 
   const fetchData = async () => {
     if (!schoolId) return;
@@ -290,6 +294,16 @@ export default function SchoolClassroomsPage() {
           <div className="flex flex-wrap items-center gap-2">
             <Button
               variant="outline"
+              onClick={() => setShowPrintModal(true)}
+              disabled={loading || classrooms.length === 0}
+              className="rounded-2xl bg-white"
+            >
+              <Printer className="mr-2 h-4 w-4" />
+              Print Letters
+            </Button>
+
+            <Button
+              variant="outline"
               onClick={clearAllCounts}
               disabled={loading || totalToAdd === 0 || bulkAdding}
               className="rounded-2xl bg-white"
@@ -306,6 +320,14 @@ export default function SchoolClassroomsPage() {
             </Button>
           </div>
         </div>
+
+        <PrintRegistrationLettersModal
+          open={showPrintModal}
+          onClose={() => setShowPrintModal(false)}
+          schoolId={schoolId}
+          schoolName={school?.name || "School"}
+          classrooms={classrooms}
+        />
 
         <Card className="rounded-3xl border-0 bg-white shadow-sm">
           <div className="border-b border-slate-100 p-4 md:p-5">

@@ -6,17 +6,69 @@ function isAdmin(user: any) {
   return user?.role === "ADMIN";
 }
 
+function isSchoolAdmin(user: any) {
+  return user?.role === "SCHOOLADMIN";
+}
+
 function mapMenu(menu: any) {
   return {
     id: menu.id,
     name: menu.name,
     active: menu.active,
-    schools: menu.schoolLinks.map((link: any) => ({
+    schools: (menu.schoolLinks ?? []).map((link: any) => ({
       id: link.school.id,
       name: link.school.name,
     })),
   };
 }
+
+export const GET = auth(async (req: Request) => {
+  try {
+    const user = (req as any).auth?.user;
+
+    if (!user || (user.role !== "ADMIN" && user.role !== "SCHOOLADMIN")) {
+      return new Response("Unauthorized", { status: 401 });
+    }
+
+    let where: any = undefined;
+
+    if (isSchoolAdmin(user)) {
+      if (!user.schoolId) {
+        return new Response("No school assigned", { status: 403 });
+      }
+
+      where = {
+        schoolLinks: {
+          some: {
+            schoolId: user.schoolId,
+          },
+        },
+      };
+    }
+
+    const menus = await prisma.menu.findMany({
+      where,
+      orderBy: [{ active: "desc" }, { name: "asc" }],
+      include: {
+        schoolLinks: {
+          include: {
+            school: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    return NextResponse.json(menus.map(mapMenu));
+  } catch (e) {
+    console.error("[menus.GET]", e);
+    return new Response("server error", { status: 500 });
+  }
+});
 
 export const POST = auth(async (req: Request) => {
   const user = (req as any).auth?.user;
@@ -51,10 +103,11 @@ export const POST = auth(async (req: Request) => {
           include: {
             groupLinks: true,
             choiceLinks: true,
+            schoolLinks: true,
             mealOptions: {
               include: {
                 allergens: true,
-                groupLinks: true,
+                MealOptionMealGroup: true,
               },
             },
           },
@@ -69,21 +122,14 @@ export const POST = auth(async (req: Request) => {
           });
         }
 
-        if (!schoolIds.length) {
-          const sourceSchoolLinks = await tx.menuSchool.findMany({
-            where: { menuId: source.id },
-            select: { schoolId: true },
+        if (!schoolIds.length && source.schoolLinks.length) {
+          await tx.menuSchool.createMany({
+            data: source.schoolLinks.map((link) => ({
+              menuId: menu.id,
+              schoolId: link.schoolId,
+            })),
+            skipDuplicates: true,
           });
-
-          if (sourceSchoolLinks.length) {
-            await tx.menuSchool.createMany({
-              data: sourceSchoolLinks.map((link) => ({
-                menuId: menu.id,
-                schoolId: link.schoolId,
-              })),
-              skipDuplicates: true,
-            });
-          }
         }
 
         if (source.groupLinks.length) {
@@ -112,18 +158,9 @@ export const POST = auth(async (req: Request) => {
             data: {
               menuId: menu.id,
               name: sourceMealOption.name,
-              imageUrl: sourceMealOption.imageUrl,
               active: false,
-              availStart: sourceMealOption.availStart,
-              availEnd: sourceMealOption.availEnd,
-              caloriesKcal: sourceMealOption.caloriesKcal,
-              proteinG: sourceMealOption.proteinG,
-              carbsG: sourceMealOption.carbsG,
-              sugarsG: sourceMealOption.sugarsG,
-              fatG: sourceMealOption.fatG,
-              saturatesG: sourceMealOption.saturatesG,
-              fibreG: sourceMealOption.fibreG,
-              saltG: sourceMealOption.saltG,
+              imageUrl: sourceMealOption.imageUrl,
+              stickerCount: sourceMealOption.stickerCount,
               allergens: sourceMealOption.allergens.length
                 ? {
                     connect: sourceMealOption.allergens.map((a) => ({ id: a.id })),
@@ -132,9 +169,9 @@ export const POST = auth(async (req: Request) => {
             },
           });
 
-          if (sourceMealOption.groupLinks.length) {
+          if (sourceMealOption.MealOptionMealGroup.length) {
             await tx.mealOptionMealGroup.createMany({
-              data: sourceMealOption.groupLinks.map((link) => ({
+              data: sourceMealOption.MealOptionMealGroup.map((link) => ({
                 mealOptionId: clonedMealOption.id,
                 groupId: link.groupId,
               })),

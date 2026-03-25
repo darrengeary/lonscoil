@@ -72,7 +72,7 @@ export default function ParentPupilsPage() {
               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
             </svg>
             <div className="font-medium">Loading pupil data…</div>
-            <div className="text-xs">Hang tight, fetching records from the server.</div>
+            <div className="text-xs">Fetching records from the server.</div>
           </div>
         ) : pupils.length === 0 ? (
           <div className="flex flex-col items-center py-20 gap-3 text-muted-foreground">

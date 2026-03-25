@@ -134,7 +134,7 @@ export default function ParentSchedulesPage() {
   }
 
   const allowed = userRole === "USER";
-  if (!allowed || !schoolId) {
+  if (!allowed) {
     return (
       <div className="flex flex-col items-center justify-center h-[60vh]">
         <span className="text-lg font-bold text-destructive">Unauthorized</span>

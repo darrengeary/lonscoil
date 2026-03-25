@@ -1,5 +1,6 @@
 import "@/styles/globals.css";
 
+import type { Viewport } from "next";
 import { fontGeist, fontHeading, fontSans, fontUrban } from "@/assets/fonts";
 import { SessionProvider } from "next-auth/react";
 import { cn, constructMetadata } from "@/lib/utils";
@@ -13,6 +14,12 @@ interface RootLayoutProps {
 }
 
 export const metadata = constructMetadata();
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+};
 
 export default function RootLayout({ children }: RootLayoutProps) {
   return (
@@ -28,10 +35,10 @@ export default function RootLayout({ children }: RootLayoutProps) {
         )}
       >
         <SessionProvider>
-            <ModalProvider>{children}</ModalProvider>
-            <Analytics />
-            <Toaster richColors closeButton />
-            <TailwindIndicator />
+          <ModalProvider>{children}</ModalProvider>
+          <Analytics />
+          <Toaster richColors closeButton />
+          <TailwindIndicator />
         </SessionProvider>
       </body>
     </html>

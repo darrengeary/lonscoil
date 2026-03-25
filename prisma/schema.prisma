@@ -8,10 +8,6 @@ datasource db {
   shadowDatabaseUrl = env("SHADOW_DATABASE_URL")
 }
 
-/// ------------------------------------------------------
-/// Enums
-/// ------------------------------------------------------
-
 enum UserRole {
   ADMIN
   USER
@@ -41,10 +37,6 @@ enum AbsenceScope {
   PUPIL
   CLASSROOM
 }
-
-/// ------------------------------------------------------
-/// Auth Models
-/// ------------------------------------------------------
 
 model Account {
   id                String   @id @default(cuid())
@@ -90,10 +82,6 @@ model VerificationToken {
   @@map("verification_tokens")
 }
 
-/// ------------------------------------------------------
-/// Users
-/// ------------------------------------------------------
-
 model User {
   id             String    @id @default(cuid())
   name           String?
@@ -118,10 +106,6 @@ model User {
   updatedAt DateTime @updatedAt @map("updated_at")
 }
 
-/// ------------------------------------------------------
-/// Schools
-/// ------------------------------------------------------
-
 model School {
   id   String @id @default(cuid())
   name String
@@ -133,10 +117,6 @@ model School {
 
   menuLinks MenuSchool[]
 }
-
-/// ------------------------------------------------------
-/// Classrooms & Pupils
-/// ------------------------------------------------------
 
 model Classroom {
   id   String @id @default(cuid())
@@ -171,8 +151,9 @@ model Pupil {
   studentName String?
   allergies   String[] @default([])
 
-  orders   LunchOrder[]
-  absences Absence[]    @relation("AbsencePupil")
+  orders       LunchOrder[]
+  weekPatterns PupilMealWeekPattern[]
+  absences     Absence[]              @relation("AbsencePupil")
 
   menuId String?
   menu   Menu?   @relation(fields: [menuId], references: [id], onDelete: SetNull)
@@ -186,23 +167,16 @@ model Pupil {
   @@index([classroomId, name])
 }
 
-/// ------------------------------------------------------
-/// Meal Selection
-/// ------------------------------------------------------
-
 model MealGroup {
-  id            String  @id @default(cuid())
-  name          String
-  maxSelections Int     @default(1)
-  active        Boolean @default(false)
-
-  choices   MealChoice[]
-  menuLinks MenuMealGroup[]
-
-  mealOptionLinks MealOptionMealGroup[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id                  String                @id @default(cuid())
+  name                String
+  maxSelections       Int
+  active              Boolean               @default(true)
+  choices             MealChoice[]
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+  MenuMealGroup       MenuMealGroup[]
+  MealOptionMealGroup MealOptionMealGroup[]
 }
 
 model MealChoice {
@@ -214,7 +188,7 @@ model MealChoice {
   groupId String
 
   allergens   Allergen[]
-  ingredients String[] @default([])
+  ingredients String[]   @default([])
 
   availStart DateTime?
   availEnd   DateTime?
@@ -231,11 +205,15 @@ model MealChoice {
   fibreG       Float?
   saltG        Float?
 
-  orderItems OrderItem[]
-  menuLinks  MenuMealChoice[]
+  orderItems       OrderItem[]
+  menuLinks        MenuMealChoice[]
+  weekPatternItems PupilMealWeekPatternItem[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
+
+  @@index([groupId, active])
+  @@index([availStart, availEnd])
 }
 
 model Allergen {
@@ -265,14 +243,14 @@ model Menu {
 }
 
 model MealOption {
-  id   String @id @default(cuid())
-  name String
-
+  id     String @id @default(cuid())
+  name   String
   menuId String
-  menu   Menu   @relation(fields: [menuId], references: [id], onDelete: Cascade)
+  menu   Menu   @relation(fields: [menuId], references: [id])
 
-  imageUrl String?  @db.Text
-  active   Boolean  @default(false)
+  active       Boolean @default(true)
+  imageUrl     String? @db.Text
+  stickerCount Int     @default(1)
 
   availStart DateTime?
   availEnd   DateTime?
@@ -286,17 +264,16 @@ model MealOption {
   fibreG       Float?
   saltG        Float?
 
-  allergens Allergen[]
-
-  // keep the column if it already exists, but stop using it
-  stickerCount Int @default(1)
-
-  groupLinks MealOptionMealGroup[]
+  allergens           Allergen[]
+  MealOptionMealGroup MealOptionMealGroup[]
+  lunchOrders         LunchOrder[]
+  weekPatterns        PupilMealWeekPattern[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@index([menuId])
+  @@index([menuId, active])
+  @@index([availStart, availEnd])
 }
 
 model MenuSchool {
@@ -340,10 +317,6 @@ model MenuMealChoice {
   @@index([choiceId])
 }
 
-/// ------------------------------------------------------
-/// Meal Option ↔ Meal Group (sections per meal)
-/// ------------------------------------------------------
-
 model MealOptionMealGroup {
   id           String @id @default(cuid())
   mealOptionId String
@@ -356,15 +329,15 @@ model MealOptionMealGroup {
   @@index([mealOptionId])
   @@index([groupId])
 }
-/// ------------------------------------------------------
-/// Orders
-/// ------------------------------------------------------
 
 model LunchOrder {
   id      String   @id @default(cuid())
   date    DateTime
   pupilId String
   pupil   Pupil    @relation(fields: [pupilId], references: [id])
+
+  mealOptionId String
+  mealOption   MealOption @relation(fields: [mealOptionId], references: [id])
 
   items OrderItem[]
 
@@ -373,6 +346,7 @@ model LunchOrder {
 
   @@unique([pupilId, date])
   @@index([pupilId, date])
+  @@index([mealOptionId])
 }
 
 model OrderItem {
@@ -392,9 +366,42 @@ model OrderItem {
   @@index([choiceId])
 }
 
-/// ------------------------------------------------------
-/// Schedule
-/// ------------------------------------------------------
+model PupilMealWeekPattern {
+  id      String @id @default(cuid())
+  pupilId String
+  pupil   Pupil  @relation(fields: [pupilId], references: [id], onDelete: Cascade)
+
+  weekday Int // 1=Mon ... 5=Fri
+
+  mealOptionId String
+  mealOption   MealOption @relation(fields: [mealOptionId], references: [id])
+
+  items PupilMealWeekPatternItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([pupilId, weekday])
+  @@index([pupilId, weekday])
+  @@index([mealOptionId])
+}
+
+model PupilMealWeekPatternItem {
+  id        String               @id @default(cuid())
+  patternId String
+  pattern   PupilMealWeekPattern @relation(fields: [patternId], references: [id], onDelete: Cascade)
+
+  choiceId String
+  choice   MealChoice @relation(fields: [choiceId], references: [id])
+
+  selectedIngredients String[] @default([])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([patternId])
+  @@index([choiceId])
+}
 
 model Schedule {
   id        String       @id @default(cuid())
@@ -411,10 +418,6 @@ model Schedule {
 
   @@unique([name, schoolId])
 }
-
-/// ------------------------------------------------------
-/// Absences
-/// ------------------------------------------------------
 
 model Absence {
   id    String       @id @default(cuid())
@@ -442,10 +445,6 @@ model Absence {
   @@index([classroomId, startDate])
   @@index([pupilId, startDate])
 }
-
-/// ------------------------------------------------------
-/// Print Jobs
-/// ------------------------------------------------------
 
 model PrintJob {
   id        String   @id @default(cuid())

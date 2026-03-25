@@ -97,37 +97,36 @@ export const POST = auth(async (req: Request) => {
       return new Response("menu not found", { status: 404 });
     }
 
-    const created = await prisma.mealOption.create({
-      data: {
-        menuId,
-        name,
-        active,
-        imageUrl,
-        availStart,
-        availEnd,
-        caloriesKcal: parseNullableNumber(body?.caloriesKcal),
-        proteinG: parseNullableNumber(body?.proteinG),
-        carbsG: parseNullableNumber(body?.carbsG),
-        sugarsG: parseNullableNumber(body?.sugarsG),
-        fatG: parseNullableNumber(body?.fatG),
-        saturatesG: parseNullableNumber(body?.saturatesG),
-        fibreG: parseNullableNumber(body?.fibreG),
-        saltG: parseNullableNumber(body?.saltG),
-        allergens: {
-          set: [],
-          ...(allergenIds.length
-            ? {
-                connect: allergenIds.map((id: string) => ({ id })),
-              }
-            : {}),
-        },
-      },
-      include: {
-        allergens: {
-          select: { id: true, name: true },
-        },
-      },
-    });
+const created = await prisma.mealOption.create({
+  data: {
+    menuId,
+    name,
+    active,
+    imageUrl,
+    availStart,
+    availEnd,
+    caloriesKcal: parseNullableNumber(body?.caloriesKcal),
+    proteinG: parseNullableNumber(body?.proteinG),
+    carbsG: parseNullableNumber(body?.carbsG),
+    sugarsG: parseNullableNumber(body?.sugarsG),
+    fatG: parseNullableNumber(body?.fatG),
+    saturatesG: parseNullableNumber(body?.saturatesG),
+    fibreG: parseNullableNumber(body?.fibreG),
+    saltG: parseNullableNumber(body?.saltG),
+    ...(allergenIds.length
+      ? {
+          allergens: {
+            connect: allergenIds.map((id: string) => ({ id })),
+          },
+        }
+      : {}),
+  },
+  include: {
+    allergens: {
+      select: { id: true, name: true },
+    },
+  },
+});
 
     return NextResponse.json(mapMealOption(created), { status: 201 });
   } catch (e) {
