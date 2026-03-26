@@ -6,9 +6,10 @@ import("./env.mjs");
 const nextConfig = {
   reactStrictMode: true,
   swcMinify: true,
-    eslint: {
+  eslint: {
     ignoreDuringBuilds: true,
   },
+  output: "standalone",
   images: {
     remotePatterns: [
       {
