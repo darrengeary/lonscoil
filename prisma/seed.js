@@ -12,6 +12,12 @@ const CLASSROOMS_PER_SCHOOL = 4;
 const PUPILS_PER_CLASSROOM = 3;
 const RESET_SEED_DATA = true;
 
+const TEST_USER_EMAIL = "parent@test.ie";
+const TEST_ADMIN_EMAIL = "admin@test.ie";
+const TEST_NAME = "Galina";
+const TEST_PASSWORD_HASH =
+  "$2b$10$VzLVLLN8O9JncHt8VDv/3uE.1UqypQkS1OBK0pgJ9V7mrc.FrGkGK";
+
 const SCHOOL_NAMES = [
   "Scoil Mhuire, Letterkenny",
   "St. Mary's National School, Buncrana",
@@ -254,7 +260,9 @@ function pickOne(arr) {
 function makePupilName(index) {
   const first = PUPIL_FIRST_NAMES[index % PUPIL_FIRST_NAMES.length];
   const last =
-    PUPIL_LAST_NAMES[Math.floor(index / PUPIL_FIRST_NAMES.length) % PUPIL_LAST_NAMES.length];
+    PUPIL_LAST_NAMES[
+      Math.floor(index / PUPIL_FIRST_NAMES.length) % PUPIL_LAST_NAMES.length
+    ];
   return `${first} ${last}`;
 }
 
@@ -300,6 +308,9 @@ async function wipeSeedData() {
         { email: { startsWith: "schooladmin" } },
         { email: { startsWith: "teacher" } },
         { email: { startsWith: "parent_" } },
+        { email: TEST_USER_EMAIL },
+        { email: TEST_ADMIN_EMAIL },
+        { email: "admin@school.io" },
       ],
     },
     data: {
@@ -315,6 +326,9 @@ async function wipeSeedData() {
         { email: { startsWith: "schooladmin" } },
         { email: { startsWith: "teacher" } },
         { email: { startsWith: "parent_" } },
+        { email: TEST_USER_EMAIL },
+        { email: TEST_ADMIN_EMAIL },
+        { email: "admin@school.io" },
       ],
     },
   });
@@ -651,7 +665,6 @@ async function createGlobalMenus(mealData) {
   await linkAllGroupsAndChoicesToMenu(standardMenu.id, mealData);
   await linkAllGroupsAndChoicesToMenu(halalMenu.id, mealData);
 
-  // STANDARD MENU
   const standardChickenCurry = await createMealOption({
     menuId: standardMenu.id,
     name: "Chicken Curry",
@@ -678,7 +691,6 @@ async function createGlobalMenus(mealData) {
 
   await prisma.mealOptionMealGroup.createMany({
     data: [
-      // Chicken Curry
       {
         mealOptionId: standardChickenCurry.id,
         groupId: mealData.groups.sideGroup.id,
@@ -687,8 +699,6 @@ async function createGlobalMenus(mealData) {
         mealOptionId: standardChickenCurry.id,
         groupId: mealData.groups.vegGroup.id,
       },
-
-      // Pizza Slice w/ Side
       {
         mealOptionId: standardPizzaSliceWithSide.id,
         groupId: mealData.groups.sauceGroup.id,
@@ -697,8 +707,6 @@ async function createGlobalMenus(mealData) {
         mealOptionId: standardPizzaSliceWithSide.id,
         groupId: mealData.groups.sideGroup.id,
       },
-
-      // Soup + Sandwich
       {
         mealOptionId: standardSoupSandwich.id,
         groupId: mealData.groups.soupGroup.id,
@@ -711,7 +719,6 @@ async function createGlobalMenus(mealData) {
     skipDuplicates: true,
   });
 
-  // HALAL MENU
   const halalChickenCurry = await createMealOption({
     menuId: halalMenu.id,
     name: "HALAL Chicken Curry",
@@ -738,7 +745,6 @@ async function createGlobalMenus(mealData) {
 
   await prisma.mealOptionMealGroup.createMany({
     data: [
-      // HALAL Chicken Curry
       {
         mealOptionId: halalChickenCurry.id,
         groupId: mealData.groups.sideGroup.id,
@@ -747,8 +753,6 @@ async function createGlobalMenus(mealData) {
         mealOptionId: halalChickenCurry.id,
         groupId: mealData.groups.sauceGroup.id,
       },
-
-      // Soup + Sandwich
       {
         mealOptionId: halalSoupSandwich.id,
         groupId: mealData.groups.soupGroup.id,
@@ -757,8 +761,6 @@ async function createGlobalMenus(mealData) {
         mealOptionId: halalSoupSandwich.id,
         groupId: mealData.groups.sandwichTypeGroup.id,
       },
-
-      // Wrap
       {
         mealOptionId: halalWrap.id,
         groupId: mealData.groups.wrapFillingsGroup.id,
@@ -794,16 +796,41 @@ async function main() {
 
   console.log("🌱 Seeding...");
 
-  await prisma.user.upsert({
-    where: { email: "admin@school.io" },
+  const seededAt = new Date();
+
+  const testParentUser = await prisma.user.upsert({
+    where: { email: TEST_USER_EMAIL },
     update: {
-      name: "Site Admin",
-      role: UserRole.ADMIN,
+      name: TEST_NAME,
+      role: UserRole.USER,
+      hashedPassword: TEST_PASSWORD_HASH,
+      emailVerified: seededAt,
+      schoolId: null,
     },
     create: {
-      email: "admin@school.io",
-      name: "Site Admin",
+      email: TEST_USER_EMAIL,
+      name: TEST_NAME,
+      role: UserRole.USER,
+      hashedPassword: TEST_PASSWORD_HASH,
+      emailVerified: seededAt,
+    },
+  });
+
+  const testAdminUser = await prisma.user.upsert({
+    where: { email: TEST_ADMIN_EMAIL },
+    update: {
+      name: TEST_NAME,
       role: UserRole.ADMIN,
+      hashedPassword: TEST_PASSWORD_HASH,
+      emailVerified: seededAt,
+      schoolId: null,
+    },
+    create: {
+      email: TEST_ADMIN_EMAIL,
+      name: TEST_NAME,
+      role: UserRole.ADMIN,
+      hashedPassword: TEST_PASSWORD_HASH,
+      emailVerified: seededAt,
     },
   });
 
@@ -812,6 +839,8 @@ async function main() {
 
   const schools = [];
   let globalPupilIndex = 0;
+  let assignedTestPupilCount = 0;
+  let testSchoolId = null;
 
   const now = new Date();
   const currentYear = now.getFullYear();
@@ -837,13 +866,17 @@ async function main() {
       where: { email: schoolAdminEmail(i + 1) },
       update: {
         name: `School Admin ${i + 1}`,
-        role: UserRole.SCHOOLADMIN,
+        role: UserRole.USER,
+        hashedPassword: TEST_PASSWORD_HASH,
+        emailVerified: seededAt,
         schoolId: school.id,
       },
       create: {
         email: schoolAdminEmail(i + 1),
         name: `School Admin ${i + 1}`,
-        role: UserRole.SCHOOLADMIN,
+        role: UserRole.USER,
+        hashedPassword: TEST_PASSWORD_HASH,
+        emailVerified: seededAt,
         schoolId: school.id,
       },
       select: { id: true, email: true, name: true },
@@ -883,12 +916,18 @@ async function main() {
         where: { email: teacherEmail(i + 1, j + 1) },
         update: {
           name: `Teacher ${i + 1}-${j + 1}`,
-          role: UserRole.TEACHER,
+          role: UserRole.USER,
+          hashedPassword: TEST_PASSWORD_HASH,
+          emailVerified: seededAt,
+          schoolId: school.id,
         },
         create: {
           email: teacherEmail(i + 1, j + 1),
           name: `Teacher ${i + 1}-${j + 1}`,
-          role: UserRole.TEACHER,
+          role: UserRole.USER,
+          hashedPassword: TEST_PASSWORD_HASH,
+          emailVerified: seededAt,
+          schoolId: school.id,
         },
         select: { id: true, email: true, name: true },
       });
@@ -912,13 +951,20 @@ async function main() {
         const pupilName = makePupilName(globalPupilIndex - 1);
         const pupilLastName = pupilName.split(" ").slice(-1)[0];
 
-        const parent = await prisma.user.create({
-          data: {
-            email: parentEmail(i + 1, j + 1, k + 1),
-            name: makeParentName(globalPupilIndex - 1, pupilLastName),
-            role: UserRole.USER,
-          },
-        });
+        const useTestParent = assignedTestPupilCount < 2;
+
+        const parent = useTestParent
+          ? testParentUser
+          : await prisma.user.create({
+              data: {
+                email: parentEmail(i + 1, j + 1, k + 1),
+                name: makeParentName(globalPupilIndex - 1, pupilLastName),
+                role: UserRole.USER,
+                hashedPassword: TEST_PASSWORD_HASH,
+                emailVerified: seededAt,
+                schoolId: school.id,
+              },
+            });
 
         const allergies =
           globalPupilIndex % 11 === 0
@@ -947,6 +993,11 @@ async function main() {
           },
         });
 
+        if (useTestParent) {
+          assignedTestPupilCount++;
+          testSchoolId = school.id;
+        }
+
         pupils.push({
           pupil,
           parent,
@@ -973,58 +1024,72 @@ async function main() {
     });
   }
 
+  if (testSchoolId) {
+    await prisma.user.updateMany({
+      where: {
+        email: {
+          in: [TEST_USER_EMAIL, TEST_ADMIN_EMAIL],
+        },
+      },
+      data: {
+        schoolId: testSchoolId,
+      },
+    });
+  }
+
   console.log("🍱 Creating populated orders for the next 7 days...");
 
   const nextDays = nextSevenDays(new Date());
   const c = mealData.choices;
 
-const standardPlans = [
-  {
-    mealOptionId: globalMenus.standardMealOptions.standardChickenCurry.id,
-    buildItems: () => [
-      pickOne([c.rice, c.roastPotatoes, c.chips, c.naan]),
-      pickOne([c.peas, c.sweetcorn, c.mixedVeg, c.salad]),
-    ],
-  },
-  {
-    mealOptionId: globalMenus.standardMealOptions.standardPizzaSliceWithSide.id,
-    buildItems: () => [
-      pickOne([c.ketchup, c.tomatoSauce, c.gravy, c.mildCurrySauce]),
-      pickOne([c.rice, c.roastPotatoes, c.chips, c.naan]),
-    ],
-  },
-  {
-    mealOptionId: globalMenus.standardMealOptions.standardSoupSandwich.id,
-    buildItems: () => [
-      pickOne([c.tomatoSoup, c.vegetableSoup, c.chickenNoodleSoup]),
-      pickOne([c.chickenSandwich, c.hamSandwich, c.cheeseSandwich, c.tunaSandwich]),
-    ],
-  },
-];
+  const standardPlans = [
+    {
+      mealOptionId: globalMenus.standardMealOptions.standardChickenCurry.id,
+      buildItems: () => [
+        pickOne([c.rice, c.roastPotatoes, c.chips, c.naan]),
+        pickOne([c.peas, c.sweetcorn, c.mixedVeg, c.salad]),
+      ],
+    },
+    {
+      mealOptionId: globalMenus.standardMealOptions.standardPizzaSliceWithSide.id,
+      buildItems: () => [
+        pickOne([c.ketchup, c.tomatoSauce, c.gravy, c.mildCurrySauce]),
+        pickOne([c.rice, c.roastPotatoes, c.chips, c.naan]),
+      ],
+    },
+    {
+      mealOptionId: globalMenus.standardMealOptions.standardSoupSandwich.id,
+      buildItems: () => [
+        pickOne([c.tomatoSoup, c.vegetableSoup, c.chickenNoodleSoup]),
+        pickOne([c.chickenSandwich, c.hamSandwich, c.cheeseSandwich, c.tunaSandwich]),
+      ],
+    },
+  ];
 
-const halalPlans = [
-  {
-    mealOptionId: globalMenus.halalMealOptions.halalChickenCurry.id,
-    buildItems: () => [
-      pickOne([c.rice, c.roastPotatoes, c.chips, c.naan]),
-      pickOne([c.tomatoSauce, c.mildCurrySauce, c.gravy, c.ketchup]),
-    ],
-  },
-  {
-    mealOptionId: globalMenus.halalMealOptions.halalSoupSandwich.id,
-    buildItems: () => [
-      pickOne([c.tomatoSoup, c.vegetableSoup, c.chickenNoodleSoup]),
-      pickOne([c.chickenSandwich, c.cheeseSandwich]),
-    ],
-  },
-  {
-    mealOptionId: globalMenus.halalMealOptions.halalWrap.id,
-    buildItems: () => [
-      pickOne([c.chickenTikkaWrap, c.falafelWrap, c.periPeriChickenWrap]),
-      pickOne([c.water, c.orangeJuice, c.milk]),
-    ],
-  },
-];
+  const halalPlans = [
+    {
+      mealOptionId: globalMenus.halalMealOptions.halalChickenCurry.id,
+      buildItems: () => [
+        pickOne([c.rice, c.roastPotatoes, c.chips, c.naan]),
+        pickOne([c.tomatoSauce, c.mildCurrySauce, c.gravy, c.ketchup]),
+      ],
+    },
+    {
+      mealOptionId: globalMenus.halalMealOptions.halalSoupSandwich.id,
+      buildItems: () => [
+        pickOne([c.tomatoSoup, c.vegetableSoup, c.chickenNoodleSoup]),
+        pickOne([c.chickenSandwich, c.cheeseSandwich]),
+      ],
+    },
+    {
+      mealOptionId: globalMenus.halalMealOptions.halalWrap.id,
+      buildItems: () => [
+        pickOne([c.chickenTikkaWrap, c.falafelWrap, c.periPeriChickenWrap]),
+        pickOne([c.water, c.orangeJuice, c.milk]),
+      ],
+    },
+  ];
+
   for (const schoolEntry of schools) {
     for (const classEntry of schoolEntry.classrooms) {
       for (const pupilEntry of classEntry.pupils) {
@@ -1080,7 +1145,10 @@ const halalPlans = [
   console.log(`   Global menus: 2 (Standard + HALAL)`);
   console.log(`   Meal options per menu: 3`);
   console.log(`   Meal groups per option: 2`);
-  console.log(`   Site admin: admin@school.io`);
+  console.log(`   Test parent: ${TEST_USER_EMAIL}`);
+  console.log(`   Test admin: ${TEST_ADMIN_EMAIL}`);
+  console.log(`   Test parent pupils assigned: ${assignedTestPupilCount}`);
+  console.log(`   Test school linked: ${testSchoolId || "n/a"}`);
   console.log(`   Example school admin: ${schools[0]?.schoolAdmin.email || "n/a"}`);
   console.log(`   Example teacher: ${schools[0]?.classrooms[0]?.teacher.email || "n/a"}`);
   console.log(`   Example parent: ${schools[0]?.classrooms[0]?.pupils[0]?.parent.email || "n/a"}`);
