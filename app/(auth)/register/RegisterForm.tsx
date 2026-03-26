@@ -1,7 +1,7 @@
-// app/(auth)/register/RegisterForm.tsx
 "use client";
 
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import { signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
@@ -42,6 +42,52 @@ const ALLERGY_OPTIONS = [
   "Sesame",
   "Other",
 ];
+
+function normalizeForComparison(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function hasSequentialPattern(password: string) {
+  const lower = password.toLowerCase();
+
+  const sequences = [
+    "0123456789",
+    "9876543210",
+    "abcdefghijklmnopqrstuvwxyz",
+    "zyxwvutsrqponmlkjihgfedcba",
+    "qwertyuiop",
+    "poiuytrewq",
+    "asdfghjkl",
+    "lkjhgfdsa",
+    "zxcvbnm",
+    "mnbvcxz",
+  ];
+
+  return sequences.some(seq => {
+    for (let i = 0; i <= seq.length - 4; i++) {
+      if (lower.includes(seq.slice(i, i + 4))) return true;
+    }
+    return false;
+  });
+}
+
+function hasRepeatedChars(password: string) {
+  return /(.)\1{3,}/.test(password);
+}
+
+function getErrorMessage(error: unknown, fallback: string) {
+  if (error instanceof Error && error.message) return error.message;
+  if (typeof error === "string" && error) return error;
+  return fallback;
+}
+
+async function parseJsonSafe(res: Response) {
+  try {
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
 
 export default function RegisterForm() {
   const router = useRouter();
@@ -143,7 +189,7 @@ export default function RegisterForm() {
         body: JSON.stringify({ codes: [code] }),
       });
 
-      const data = await res.json();
+      const data = await parseJsonSafe(res);
 
       if (!res.ok) {
         throw new Error(data?.error || "Code validation failed");
@@ -164,14 +210,17 @@ export default function RegisterForm() {
           variant: "destructive",
         });
       }
-    } catch (err: any) {
+    } catch (error) {
       setCodes(prev =>
         prev.map(r => (r.id === row.id ? { ...r, status: "invalid" } : r))
       );
 
       toast({
         title: "Code validation failed",
-        description: err?.message || "Something went wrong while validating the code.",
+        description: getErrorMessage(
+          error,
+          "Something went wrong while validating the code."
+        ),
         variant: "destructive",
       });
     }
@@ -198,6 +247,67 @@ export default function RegisterForm() {
     });
   }
 
+  const passwordChecks = useMemo(() => {
+    const normalizedPassword = normalizeForComparison(password);
+    const normalizedEmail = normalizeForComparison(email.trim());
+    const emailLocalPart = normalizeForComparison(email.trim().split("@")[0] || "");
+
+    const studentNames = codes
+      .map(row => row.studentName.trim())
+      .filter(Boolean)
+      .map(normalizeForComparison)
+      .filter(name => name.length >= 3);
+
+    const containsStudentName = studentNames.some(name =>
+      normalizedPassword.includes(name)
+    );
+
+    return {
+      minLength: password.length >= 12,
+      lowercase: /[a-z]/.test(password),
+      uppercase: /[A-Z]/.test(password),
+      number: /[0-9]/.test(password),
+      special: /[^A-Za-z0-9]/.test(password),
+      noSpaces: !/\s/.test(password),
+      noEmail:
+        !normalizedEmail || !normalizedPassword.includes(normalizedEmail),
+      noEmailPart:
+        !emailLocalPart ||
+        emailLocalPart.length < 3 ||
+        !normalizedPassword.includes(emailLocalPart),
+      noStudentName: !containsStudentName,
+      noSequence: !hasSequentialPattern(password),
+      noRepeated: !hasRepeatedChars(password),
+    };
+  }, [password, email, codes]);
+
+  const passwordErrors = useMemo(() => {
+    const errors: string[] = [];
+
+    if (!passwordChecks.minLength) errors.push("Use at least 12 characters");
+    if (!passwordChecks.lowercase) errors.push("Add a lowercase letter");
+    if (!passwordChecks.uppercase) errors.push("Add an uppercase letter");
+    if (!passwordChecks.number) errors.push("Add a number");
+    if (!passwordChecks.special) errors.push("Add a special character");
+    if (!passwordChecks.noSpaces) errors.push("Remove spaces");
+    if (!passwordChecks.noEmail || !passwordChecks.noEmailPart) {
+      errors.push("Do not include your email");
+    }
+    if (!passwordChecks.noStudentName) {
+      errors.push("Do not include a student name");
+    }
+    if (!passwordChecks.noSequence) {
+      errors.push("Avoid common sequences like 1234 or abcd");
+    }
+    if (!passwordChecks.noRepeated) {
+      errors.push("Avoid repeated characters like aaaa");
+    }
+
+    return errors;
+  }, [passwordChecks]);
+
+  const passwordIsValid = password.length > 0 && passwordErrors.length === 0;
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSubmitAttempted(true);
@@ -217,10 +327,10 @@ export default function RegisterForm() {
       return;
     }
 
-    if (password.length < 8) {
+    if (!passwordIsValid) {
       toast({
-        title: "Password too short",
-        description: "Password must be at least 8 characters long.",
+        title: "Password not acceptable",
+        description: passwordErrors[0] || "Please choose a stronger password.",
         variant: "destructive",
       });
       return;
@@ -262,30 +372,29 @@ export default function RegisterForm() {
         }),
       });
 
-      const regJson = await regRes.json();
+      const regJson = await parseJsonSafe(regRes);
 
       if (!regRes.ok) {
         throw new Error(regJson?.error || "Registration failed");
       }
 
       const callbackUrl =
-        searchParams?.get("from") || `${window.location.origin}/login?verified=1`;
+        searchParams?.get("from") ||
+        `${window.location.origin}/login?verified=1`;
 
-      const signInRes = await signIn("resend", {
-        email: cleanEmail,
-        redirect: false,
-        callbackUrl,
-      });
+const signInRes = await signIn("resend", {
+  email: cleanEmail,
+  redirect: false,
+  callbackUrl,
+});
 
-      if (signInRes?.error) {
-        throw new Error(signInRes.error);
-      }
+console.log("signInRes", signInRes);
 
       router.push("/register/verify-request");
-    } catch (err: any) {
+    } catch (error) {
       toast({
         title: "Registration failed",
-        description: err?.message || "Something went wrong.",
+        description: getErrorMessage(error, "Something went wrong."),
         variant: "destructive",
       });
     } finally {
@@ -300,10 +409,12 @@ export default function RegisterForm() {
 
   const canContinue =
     email.trim().length > 0 &&
-    password.length >= 8 &&
+    passwordIsValid &&
     validRows.length > 0 &&
     !hasMissingStudentName &&
     !codes.some(row => row.status === "checking");
+
+  const showPasswordState = password.length > 0;
 
   return (
     <div className="container flex min-h-screen w-screen flex-col items-center justify-center py-8">
@@ -340,15 +451,46 @@ export default function RegisterForm() {
           />
         </div>
 
-        <div className="space-y-1">
-          <label className="block text-sm font-medium">Password (8+ characters)</label>
+        <div className="space-y-2">
+          <label className="block text-sm font-medium">Password</label>
           <Input
             type="password"
             value={password}
             onChange={e => setPassword(e.target.value)}
-            placeholder="Create a password"
+            placeholder="Create a strong password"
             required
           />
+
+          <AnimatePresence initial={false} mode="popLayout">
+            {showPasswordState && passwordIsValid && (
+              <motion.div
+                key="acceptable-password"
+                layout
+                initial={{ opacity: 0, y: -6, scale: 0.98 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -6, scale: 0.98 }}
+                transition={{ duration: 0.2 }}
+                className="flex items-center gap-2 rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700"
+              >
+                <CheckIcon className="size-4" />
+                <span>Acceptable password</span>
+              </motion.div>
+            )}
+
+            {showPasswordState && !passwordIsValid && (
+              <motion.div
+                key="password-hint"
+                layout
+                initial={{ opacity: 0, y: -6, scale: 0.98 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -6, scale: 0.98 }}
+                transition={{ duration: 0.2 }}
+                className="rounded-md border px-3 py-2 text-sm text-muted-foreground"
+              >
+                {passwordErrors[0] || "Choose a stronger password."}
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
 
         <div className="space-y-3">
@@ -426,9 +568,7 @@ export default function RegisterForm() {
                     </div>
 
                     <div className="space-y-2">
-                      <label className="block text-sm font-medium">
-                        Allergies
-                      </label>
+                      <label className="block text-sm font-medium">Allergies</label>
                       <div className="flex flex-wrap gap-2">
                         {ALLERGY_OPTIONS.map(option => {
                           const selected = row.allergies.includes(option);

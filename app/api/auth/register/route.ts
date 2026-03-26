@@ -1,8 +1,22 @@
-// app/api/auth/register/route.ts
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/db";
+
+const COMMON_PASSWORDS = new Set([
+  "password",
+  "password123",
+  "12345678",
+  "123456789",
+  "1234567890",
+  "qwerty",
+  "qwerty123",
+  "letmein",
+  "welcome",
+  "admin",
+  "iloveyou",
+  "abc123",
+]);
 
 const pupilInputSchema = z.object({
   code: z.string().min(1, "Code is required"),
@@ -12,10 +26,113 @@ const pupilInputSchema = z.object({
 
 const bodySchema = z.object({
   email: z.string().email("Valid email is required"),
-  password: z.string().min(8, "Password must be at least 8 characters"),
+  password: z.string(),
   codes: z.array(z.string().min(1)).min(1, "At least one code is required").max(5),
   pupils: z.array(pupilInputSchema).min(1, "At least one pupil is required").max(5),
 });
+
+function normalizeForComparison(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function hasSequentialPattern(password: string) {
+  const lower = password.toLowerCase();
+
+  const sequences = [
+    "0123456789",
+    "9876543210",
+    "abcdefghijklmnopqrstuvwxyz",
+    "zyxwvutsrqponmlkjihgfedcba",
+    "qwertyuiop",
+    "poiuytrewq",
+    "asdfghjkl",
+    "lkjhgfdsa",
+    "zxcvbnm",
+    "mnbvcxz",
+  ];
+
+  return sequences.some(seq => {
+    for (let i = 0; i <= seq.length - 4; i++) {
+      if (lower.includes(seq.slice(i, i + 4))) return true;
+    }
+    return false;
+  });
+}
+
+function hasRepeatedChars(password: string) {
+  return /(.)\1{3,}/.test(password);
+}
+
+function validatePassword(
+  password: string,
+  email: string,
+  pupils: Array<{ studentName: string }>
+) {
+  if (password.length < 12) {
+    return "Password must be at least 12 characters long";
+  }
+
+  if (password.length > 128) {
+    return "Password must be no more than 128 characters long";
+  }
+
+  if (/\s/.test(password)) {
+    return "Password must not contain spaces";
+  }
+
+  if (!/[a-z]/.test(password)) {
+    return "Password must include at least one lowercase letter";
+  }
+
+  if (!/[A-Z]/.test(password)) {
+    return "Password must include at least one uppercase letter";
+  }
+
+  if (!/[0-9]/.test(password)) {
+    return "Password must include at least one number";
+  }
+
+  if (!/[^A-Za-z0-9]/.test(password)) {
+    return "Password must include at least one special character";
+  }
+
+  const normalizedPassword = normalizeForComparison(password);
+  const normalizedEmail = normalizeForComparison(email);
+  const emailLocalPart = normalizeForComparison(email.split("@")[0] || "");
+
+  if (normalizedEmail && normalizedPassword.includes(normalizedEmail)) {
+    return "Password must not contain your email address";
+  }
+
+  if (
+    emailLocalPart &&
+    emailLocalPart.length >= 3 &&
+    normalizedPassword.includes(emailLocalPart)
+  ) {
+    return "Password must not contain parts of your email address";
+  }
+
+  for (const pupil of pupils) {
+    const normalizedName = normalizeForComparison(pupil.studentName);
+    if (normalizedName.length >= 3 && normalizedPassword.includes(normalizedName)) {
+      return "Password must not contain a student's name";
+    }
+  }
+
+  if (COMMON_PASSWORDS.has(password.toLowerCase())) {
+    return "That password is too common. Please choose a stronger one";
+  }
+
+  if (hasSequentialPattern(password)) {
+    return "Password must not contain common sequences like 1234 or abcd";
+  }
+
+  if (hasRepeatedChars(password)) {
+    return "Password must not contain repeated characters like aaaa";
+  }
+
+  return null;
+}
 
 export async function POST(req: Request) {
   try {
@@ -31,8 +148,15 @@ export async function POST(req: Request) {
 
     const email = parsed.data.email.toLowerCase().trim();
     const password = parsed.data.password;
+
     const codes = parsed.data.codes.map(code => code.trim());
-    const pupils = parsed.data.pupils;
+    const pupils = parsed.data.pupils.map(p => ({
+      code: p.code.trim(),
+      studentName: p.studentName.trim(),
+      allergies: Array.from(
+        new Set((p.allergies ?? []).map(a => a.trim()).filter(Boolean))
+      ),
+    }));
 
     const uniqueCodes = new Set(codes);
     if (uniqueCodes.size !== codes.length) {
@@ -44,16 +168,10 @@ export async function POST(req: Request) {
 
     const pupilMap = new Map(
       pupils.map(p => [
-        p.code.trim(),
+        p.code,
         {
-          studentName: p.studentName.trim(),
-          allergies: Array.from(
-            new Set(
-              (p.allergies ?? [])
-                .map(a => a.trim())
-                .filter(Boolean)
-            )
-          ),
+          studentName: p.studentName,
+          allergies: p.allergies,
         },
       ])
     );
@@ -77,7 +195,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const allPupilCodesMatchCodes = pupils.every(p => codes.includes(p.code.trim()));
+    const allPupilCodesMatchCodes = pupils.every(p => codes.includes(p.code));
     if (!allPupilCodesMatchCodes) {
       return NextResponse.json(
         { error: "Pupil entries must match the submitted codes" },
@@ -85,19 +203,12 @@ export async function POST(req: Request) {
       );
     }
 
-    const existing = await prisma.user.findUnique({
-      where: { email },
-      select: { id: true },
-    });
-
-    if (existing) {
-      return NextResponse.json(
-        { error: "Email already registered" },
-        { status: 400 }
-      );
+    const passwordError = validatePassword(password, email, pupils);
+    if (passwordError) {
+      return NextResponse.json({ error: passwordError }, { status: 400 });
     }
 
-    const hashedPassword = await bcrypt.hash(password, 10);
+    const hashedPassword = await bcrypt.hash(password, 12);
 
     await prisma.$transaction(async tx => {
       const dbPupils = await tx.pupil.findMany({
@@ -124,14 +235,46 @@ export async function POST(req: Request) {
 
       const schoolId = schoolIds[0];
 
-      const user = await tx.user.create({
-        data: {
-          email,
-          hashedPassword,
-          role: "USER",
-          schoolId,
+      const existingUser = await tx.user.findUnique({
+        where: { email },
+        select: {
+          id: true,
+          hashedPassword: true,
         },
       });
+
+      if (existingUser) {
+        const claimedPupilCount = await tx.pupil.count({
+          where: { parentId: existingUser.id },
+        });
+
+        const isFullyRegistered =
+          Boolean(existingUser.hashedPassword) || claimedPupilCount > 0;
+
+        if (isFullyRegistered) {
+          throw new Error("Email already registered");
+        }
+      }
+
+      const user = existingUser
+        ? await tx.user.update({
+            where: { id: existingUser.id },
+            data: {
+              hashedPassword,
+              role: "USER",
+              schoolId,
+            },
+            select: { id: true },
+          })
+        : await tx.user.create({
+            data: {
+              email,
+              hashedPassword,
+              role: "USER",
+              schoolId,
+            },
+            select: { id: true },
+          });
 
       for (const code of codes) {
         const details = pupilMap.get(code);
@@ -159,11 +302,20 @@ export async function POST(req: Request) {
       }
     });
 
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true }, { status: 200 });
   } catch (e: any) {
-    return NextResponse.json(
-      { error: e?.message || "Registration failed" },
-      { status: 400 }
-    );
+    const message =
+      typeof e?.message === "string" && e.message.length > 0
+        ? e.message
+        : "Registration failed";
+
+    const status =
+      message === "Email already registered"
+        ? 409
+        : message.includes("Password")
+          ? 400
+          : 400;
+
+    return NextResponse.json({ error: message }, { status });
   }
 }

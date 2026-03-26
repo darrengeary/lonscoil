@@ -3,7 +3,7 @@ import RegisterForm from "./RegisterForm";
 
 export const metadata = {
   title: "Register",
-  description: "Register and claim your child(ren).",
+  description: "Register and claim lunches.",
 };
 
 export default function RegisterPage() {
