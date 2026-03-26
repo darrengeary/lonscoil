@@ -56,11 +56,11 @@ export default function ParentPupilsPage() {
   return (
     <>
     <div className="ml-6 mt-6">
-      <DashboardHeader heading="My Pupils" text="Manage your children’s profiles." />
+      <DashboardHeader heading="Linked Pupils" text="Manage linked pupils" />
 
       <div className="flex justify-start my-4">
         <Button onClick={() => setShowAddModal(true)}>
-          <Plus className="mr-2 h-4 w-4" /> Claim Pupil
+          <Plus className="mr-2 h-4 w-4" /> New Pupil
         </Button>
       </div>  </div>
 

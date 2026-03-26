@@ -222,7 +222,7 @@ export default function AdminSchedulesPage() {
   }
 
   return (
-    <div className="space-y-8 px-4 py-8">
+    <div className="space-y-8 md:px-4 md:py-8">
       <DashboardHeader
         heading="School Schedules"
         text="View all school schedules visually or in a list. Select a school to filter, or view all. Editing is enabled only when a specific school is selected."

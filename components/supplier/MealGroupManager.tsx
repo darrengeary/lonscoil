@@ -5,7 +5,15 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import ChoiceManager from "./ChoiceManager";
-import { Pencil, Plus, ToggleLeft, ToggleRight, AlertTriangle } from "lucide-react";
+import {
+  Pencil,
+  Plus,
+  ToggleLeft,
+  ToggleRight,
+  AlertTriangle,
+  ChevronDown,
+  ChevronRight,
+} from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -75,6 +83,8 @@ export default function MealGroupManager({
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [pendingGroup, setPendingGroup] = useState<MealGroup | null>(null);
 
+  const [showDisabledGroups, setShowDisabledGroups] = useState(false);
+
   const inputRef = useRef<HTMLInputElement>(null);
 
   const isEdit = !!editingGroupId;
@@ -82,6 +92,16 @@ export default function MealGroupManager({
   const canSave = useMemo(
     () => groupName.trim().length >= 2 || (!!duplicateFromGroupId && !isEdit),
     [groupName, duplicateFromGroupId, isEdit]
+  );
+
+  const activeGroups = useMemo(
+    () => groups.filter((group) => group.active),
+    [groups]
+  );
+
+  const disabledGroups = useMemo(
+    () => groups.filter((group) => !group.active),
+    [groups]
   );
 
   function updateGroups(next: MealGroup[]) {
@@ -184,6 +204,63 @@ export default function MealGroupManager({
     setPendingGroup(null);
   }
 
+  function renderGroupCard(group: MealGroup) {
+    const isActive = group.active;
+
+    return (
+      <Card
+        key={group.id}
+        className={`relative flex flex-col border rounded-3xl p-7 shadow-sm transition-all duration-150 ${
+          isActive ? "bg-white hover:shadow-lg" : "bg-gray-50 opacity-75"
+        }`}
+      >
+        <div className="flex items-center justify-between mb-4">
+          <div className="min-w-0">
+            <div className="text-xl font-bold text-[#27364B] truncate">{group.name}</div>
+            <div className="text-xs text-gray-500">{isActive ? "Active" : "Disabled"}</div>
+          </div>
+
+          <div className="px-3 py-1 rounded-full bg-[#FFE6E6] text-[#DC2626] font-semibold text-sm flex items-center ml-3">
+            Max:
+            <span className="ml-2 font-bold">{group.maxSelections}</span>
+          </div>
+        </div>
+
+        <div className="flex gap-2 mb-4">
+          <Button
+            size="sm"
+            type="button"
+            className={`rounded-xl ${
+              isActive
+                ? "bg-green-600 hover:bg-green-700 text-white"
+                : "bg-red-600 hover:bg-red-700 text-white"
+            }`}
+            onClick={() => askToggleGroup(group)}
+          >
+            {isActive ? (
+              <ToggleRight className="h-4 w-4" />
+            ) : (
+              <ToggleLeft className="h-4 w-4" />
+            )}
+          </Button>
+
+          <Button variant="outline" size="sm" onClick={() => openEditGroup(group)} type="button">
+            <Pencil className="h-4 w-4 mr-2" />
+            Edit
+          </Button>
+        </div>
+
+        <ChoiceManager
+          menuId={menuId}
+          groupId={group.id}
+          mealOptionId={mealOptionId}
+          initialChoices={group.choices}
+          disabled={false}
+        />
+      </Card>
+    );
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex justify-between items-center">
@@ -270,57 +347,51 @@ export default function MealGroupManager({
         </div>
       )}
 
-      <div className="min-h-[1px] bg-[#F4F7FA] rounded-xl p-4">
-        <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
-          {groups.map((group) => (
-            <Card
-              key={group.id}
-              className={`relative flex flex-col border rounded-3xl p-7 shadow-sm hover:shadow-lg transition-all duration-150 ${
-                group.active ? "bg-white" : "bg-gray-50 opacity-60"
-              }`}
+      <div className="min-h-[1px] bg-[#F4F7FA] rounded-xl p-4 space-y-6">
+        {activeGroups.length > 0 && (
+          <div>
+            <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+              {activeGroups.map((group) => renderGroupCard(group))}
+            </div>
+          </div>
+        )}
+
+        {disabledGroups.length > 0 && (
+          <div className="rounded-2xl border border-dashed border-slate-300 bg-white/70">
+            <button
+              type="button"
+              onClick={() => setShowDisabledGroups((v) => !v)}
+              className="w-full flex items-center justify-between px-4 py-3 text-left"
             >
-              <div className="flex items-center justify-between mb-4">
-                <div className="min-w-0">
-                  <div className="text-xl font-bold text-[#27364B] truncate">{group.name}</div>
-                  <div className="text-xs text-gray-500">{group.active ? "Active" : "Disabled"}</div>
-                </div>
-
-                <div className="px-3 py-1 rounded-full bg-[#FFE6E6] text-[#DC2626] font-semibold text-sm flex items-center ml-3">
-                  Max:
-                  <span className="ml-2 font-bold">{group.maxSelections}</span>
+              <div>
+                <div className="text-sm font-semibold text-slate-700">Disabled add-ons</div>
+                <div className="text-xs text-slate-500">
+                  {disabledGroups.length} hidden group{disabledGroups.length === 1 ? "" : "s"}
                 </div>
               </div>
 
-              <div className="flex gap-2 mb-4">
-                <Button
-                  size="sm"
-                  type="button"
-                  className={`rounded-xl ${
-                    group.active
-                      ? "bg-green-600 hover:bg-green-700 text-white"
-                      : "bg-red-600 hover:bg-red-700 text-white"
-                  }`}
-                  onClick={() => askToggleGroup(group)}
-                >
-                  {group.active ? <ToggleRight className="h-4 w-4" /> : <ToggleLeft className="h-4 w-4" />}
-                </Button>
+              {showDisabledGroups ? (
+                <ChevronDown className="h-5 w-5 text-slate-500" />
+              ) : (
+                <ChevronRight className="h-5 w-5 text-slate-500" />
+              )}
+            </button>
 
-                <Button variant="outline" size="sm" onClick={() => openEditGroup(group)} type="button">
-                  <Pencil className="h-4 w-4 mr-2" />
-                  Edit
-                </Button>
+            {showDisabledGroups && (
+              <div className="px-4 pb-4">
+                <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+                  {disabledGroups.map((group) => renderGroupCard(group))}
+                </div>
               </div>
+            )}
+          </div>
+        )}
 
-              <ChoiceManager
-                menuId={menuId}
-                groupId={group.id}
-                mealOptionId={mealOptionId}
-                initialChoices={group.choices}
-                disabled={false}
-              />
-            </Card>
-          ))}
-        </div>
+        {groups.length === 0 && (
+          <div className="rounded-2xl border border-dashed bg-white px-6 py-10 text-center text-sm text-slate-500">
+            No add-ons created yet.
+          </div>
+        )}
       </div>
 
       <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>

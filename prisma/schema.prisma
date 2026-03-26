@@ -331,22 +331,16 @@ model MealOptionMealGroup {
 }
 
 model LunchOrder {
-  id      String   @id @default(cuid())
-  date    DateTime
-  pupilId String
-  pupil   Pupil    @relation(fields: [pupilId], references: [id])
-
+  id           String   @id @default(cuid())
+  pupilId      String
+  date         DateTime
   mealOptionId String
-  mealOption   MealOption @relation(fields: [mealOptionId], references: [id])
 
-  items OrderItem[]
+  pupil      Pupil       @relation(fields: [pupilId], references: [id], onDelete: Cascade)
+  mealOption MealOption  @relation(fields: [mealOptionId], references: [id])
+  items      OrderItem[]
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@unique([pupilId, date])
-  @@index([pupilId, date])
-  @@index([mealOptionId])
+  @@unique([pupilId, date], name: "pupilId_date")
 }
 
 model OrderItem {

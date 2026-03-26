@@ -13,16 +13,16 @@ const PUPILS_PER_CLASSROOM = 3;
 const RESET_SEED_DATA = true;
 
 const SCHOOL_NAMES = [
-  "Scoil Bhríde, Ranelagh",
-  "St. Patrick's Boys National School, Drumcondra",
-  "Scoil Mhuire Girls National School, Marino",
-  "Gaelscoil Dara, Bray",
-  "St. Joseph's National School, Tullamore",
-  "Scoil Naomh Treasa, Mount Merrion",
-  "St. Columba's National School, Douglas",
-  "Scoil Íde, Corbally",
-  "Our Lady of Lourdes National School, Inchicore",
-  "St. Mary's National School, Navan",
+  "Scoil Mhuire, Letterkenny",
+  "St. Mary's National School, Buncrana",
+  "St. Patrick's National School, Donegal Town",
+  "St. Columba's National School, Stranorlar",
+  "St. Bridget's National School, Convoy",
+  "St. Aidan's National School, Raphoe",
+  "St. Joseph's National School, Carndonagh",
+  "Scoil Iosagain, Ballybofey",
+  "St. Anne's National School, Falcarragh",
+  "St. Oran's National School, Dungloe",
 ];
 
 const CLASSROOM_NAMES = [
@@ -33,36 +33,36 @@ const CLASSROOM_NAMES = [
 ];
 
 const PUPIL_FIRST_NAMES = [
-  "Oisín",
-  "Tadhg",
-  "Cillian",
-  "Rían",
-  "Darragh",
+  "Jack",
+  "Noah",
+  "James",
+  "Daniel",
   "Conor",
-  "Seán",
-  "Pádraig",
-  "Fionn",
-  "Eoghan",
-  "Aoife",
-  "Saoirse",
-  "Clodagh",
-  "Niamh",
-  "Éabha",
-  "Fiadh",
-  "Orlaith",
-  "Caoimhe",
-  "Róisín",
-  "Aisling",
-  "Lorcan",
-  "Diarmuid",
-  "Tomás",
-  "Odhrán",
-  "Croía",
-  "Molly",
+  "Ryan",
+  "Luke",
+  "Adam",
+  "Ben",
+  "Charlie",
+  "Emily",
+  "Grace",
+  "Sophie",
   "Ella",
-  "Cara",
+  "Lucy",
+  "Chloe",
+  "Emma",
+  "Katie",
+  "Molly",
+  "Sarah",
+  "Sean",
+  "Oisin",
+  "Evan",
+  "Cian",
+  "Harry",
+  "Anna",
+  "Mia",
+  "Kate",
+  "Ava",
   "Holly",
-  "Meabh",
 ];
 
 const PUPIL_LAST_NAMES = [
@@ -88,38 +88,106 @@ const PUPIL_LAST_NAMES = [
   "Power",
   "Fitzgerald",
   "Keane",
-  "O'Sullivan",
-  "Maguire",
-  "McGrath",
-  "Kavanagh",
+  "Doherty",
+  "McLaughlin",
+  "Boyle",
   "Brennan",
   "Hogan",
   "Meehan",
   "Donnelly",
+  "Rooney",
 ];
 
 const PARENT_FIRST_NAMES = [
+  "Sarah",
+  "Emma",
   "Aoife",
-  "Niamh",
-  "Sinéad",
-  "Gráinne",
-  "Deirdre",
-  "Ciara",
-  "Aisling",
-  "Orla",
-  "Maeve",
-  "Clare",
+  "Claire",
+  "Lisa",
+  "Rachel",
+  "Maria",
+  "Karen",
+  "Nicola",
+  "Louise",
   "John",
   "Michael",
-  "Patrick",
-  "Declan",
-  "Seamus",
-  "Brendan",
-  "Eoin",
-  "Cathal",
-  "Colm",
+  "David",
+  "Paul",
+  "Mark",
   "Brian",
+  "Patrick",
+  "Stephen",
+  "Martin",
+  "Declan",
 ];
+
+const MENU_ITEM_IMAGES = {
+  standardChickenCurry:
+    "https://res.cloudinary.com/dvwuge9k7/image/upload/v1774518984/meal-options/ekncvg0ycurcnuqz5v2p.jpg",
+  halalChickenCurry:
+    "https://res.cloudinary.com/dvwuge9k7/image/upload/v1774518984/meal-options/ekncvg0ycurcnuqz5v2p.jpg",
+  pizzaSliceWithSide:
+    "https://res.cloudinary.com/dvwuge9k7/image/upload/v1774519007/meal-options/cogjjh3orphlcpjwetbq.jpg",
+  standardSoupSandwich:
+    "https://res.cloudinary.com/dvwuge9k7/image/upload/v1774519055/meal-options/vfp9jsrzxtfvegrnbejl.jpg",
+  wrap:
+    "https://res.cloudinary.com/dvwuge9k7/image/upload/v1774519116/meal-options/ocojrlmwpohrwkstalhd.webp",
+  halalSoupSandwich:
+    "https://res.cloudinary.com/dvwuge9k7/image/upload/v1774519130/meal-options/pdvlbqtnwc2vqi3ip9yf.jpg",
+};
+
+const MEAL_OPTION_NUTRITION = {
+  chickenCurry: {
+    kcal: 540,
+    p: 30,
+    c: 42,
+    s: 6,
+    f: 24,
+    sat: 6,
+    fib: 5,
+    salt: 1.4,
+  },
+  halalChickenCurry: {
+    kcal: 540,
+    p: 30,
+    c: 42,
+    s: 6,
+    f: 24,
+    sat: 6,
+    fib: 5,
+    salt: 1.4,
+  },
+  pizzaSliceWithSide: {
+    kcal: 480,
+    p: 16,
+    c: 52,
+    s: 4,
+    f: 22,
+    sat: 7,
+    fib: 4,
+    salt: 1.45,
+  },
+  soupAndSandwich: {
+    kcal: 470,
+    p: 22,
+    c: 46,
+    s: 7,
+    f: 20,
+    sat: 6,
+    fib: 4,
+    salt: 1.8,
+  },
+  wrap: {
+    kcal: 455,
+    p: 24,
+    c: 34,
+    s: 4,
+    f: 20,
+    sat: 4,
+    fib: 4,
+    salt: 1.25,
+  },
+};
 
 function startOfDay(d) {
   const x = new Date(d);
@@ -127,10 +195,30 @@ function startOfDay(d) {
   return x;
 }
 
-function endOfDay(d) {
-  const x = new Date(d);
-  x.setHours(23, 59, 59, 999);
-  return x;
+async function createMealOption({
+  menuId,
+  name,
+  stickerCount,
+  imageUrl,
+  nutrition = {},
+}) {
+  return prisma.mealOption.create({
+    data: {
+      menuId,
+      name,
+      stickerCount,
+      active: true,
+      imageUrl: imageUrl ?? null,
+      caloriesKcal: nutrition.kcal ?? null,
+      proteinG: nutrition.p ?? null,
+      carbsG: nutrition.c ?? null,
+      sugarsG: nutrition.s ?? null,
+      fatG: nutrition.f ?? null,
+      saturatesG: nutrition.sat ?? null,
+      fibreG: nutrition.fib ?? null,
+      saltG: nutrition.salt ?? null,
+    },
+  });
 }
 
 function addDays(d, n) {
@@ -161,19 +249,6 @@ function parentEmail(i, j, k) {
 
 function pickOne(arr) {
   return arr[Math.floor(Math.random() * arr.length)];
-}
-
-function pickSome(arr, minCount, maxCount) {
-  const count = Math.floor(Math.random() * (maxCount - minCount + 1)) + minCount;
-  const pool = [...arr];
-  const out = [];
-
-  for (let i = 0; i < count && pool.length; i++) {
-    const idx = Math.floor(Math.random() * pool.length);
-    out.push(pool.splice(idx, 1)[0]);
-  }
-
-  return out;
 }
 
 function makePupilName(index) {
@@ -303,23 +378,6 @@ async function createBaseMealData() {
 
   const allergenByName = Object.fromEntries(allergens.map((a) => [a.name, a]));
 
-  // Meal groups
-  const sideGroup = await prisma.mealGroup.create({
-    data: { name: "Side", maxSelections: 1, active: true },
-  });
-
-  const vegGroup = await prisma.mealGroup.create({
-    data: { name: "Veg", maxSelections: 1, active: true },
-  });
-
-  const drinkGroup = await prisma.mealGroup.create({
-    data: { name: "Drink", maxSelections: 1, active: true },
-  });
-
-  const dessertGroup = await prisma.mealGroup.create({
-    data: { name: "Dessert", maxSelections: 1, active: true },
-  });
-
   const soupGroup = await prisma.mealGroup.create({
     data: { name: "Soup", maxSelections: 1, active: true },
   });
@@ -328,112 +386,24 @@ async function createBaseMealData() {
     data: { name: "Sandwich Type", maxSelections: 1, active: true },
   });
 
-  const sandwichCondimentGroup = await prisma.mealGroup.create({
-    data: { name: "Sandwich Condiment", maxSelections: 1, active: true },
-  });
-
-  const wrapFillingsGroup = await prisma.mealGroup.create({
-    data: { name: "Wrap Filling", maxSelections: 1, active: true },
-  });
-
   const sauceGroup = await prisma.mealGroup.create({
     data: { name: "Sauce", maxSelections: 1, active: true },
   });
 
-  // Choices
-  const rice = await createChoice({
-    groupId: sideGroup.id,
-    name: "Steamed Rice",
-    nutrition: { kcal: 180, p: 4, c: 38, s: 0, f: 1, sat: 0.2, fib: 1.2, salt: 0.02 },
+  const drinkGroup = await prisma.mealGroup.create({
+    data: { name: "Drink", maxSelections: 1, active: true },
   });
 
-  const naan = await createChoice({
-    groupId: sideGroup.id,
-    name: "Naan Bread",
-    allergens: [allergenByName.Gluten, allergenByName.Dairy].filter(Boolean),
-    nutrition: { kcal: 220, p: 6, c: 36, s: 3, f: 5, sat: 1.8, fib: 1.5, salt: 0.55 },
+  const sideGroup = await prisma.mealGroup.create({
+    data: { name: "Side", maxSelections: 1, active: true },
   });
 
-  const roastPotatoes = await createChoice({
-    groupId: sideGroup.id,
-    name: "Roast Potatoes",
-    nutrition: { kcal: 210, p: 4, c: 32, s: 1, f: 7, sat: 0.8, fib: 3.2, salt: 0.3 },
+  const vegGroup = await prisma.mealGroup.create({
+    data: { name: "Veg", maxSelections: 1, active: true },
   });
 
-  const pastaTwists = await createChoice({
-    groupId: sideGroup.id,
-    name: "Pasta Twists",
-    allergens: [allergenByName.Gluten].filter(Boolean),
-    nutrition: { kcal: 240, p: 8, c: 44, s: 2, f: 3, sat: 0.6, fib: 2.4, salt: 0.08 },
-  });
-
-  const chips = await createChoice({
-    groupId: sideGroup.id,
-    name: "Oven Chips",
-    nutrition: { kcal: 230, p: 3, c: 33, s: 0.5, f: 9, sat: 1, fib: 3, salt: 0.4 },
-  });
-
-  const peas = await createChoice({
-    groupId: vegGroup.id,
-    name: "Peas",
-    nutrition: { kcal: 70, p: 5, c: 10, s: 4, f: 1, sat: 0.1, fib: 4.5, salt: 0.02 },
-  });
-
-  const sweetcorn = await createChoice({
-    groupId: vegGroup.id,
-    name: "Sweetcorn",
-    nutrition: { kcal: 85, p: 3, c: 16, s: 6, f: 1.5, sat: 0.2, fib: 2.5, salt: 0.03 },
-  });
-
-  const mixedVeg = await createChoice({
-    groupId: vegGroup.id,
-    name: "Mixed Vegetables",
-    nutrition: { kcal: 65, p: 3, c: 11, s: 5, f: 1, sat: 0.2, fib: 4, salt: 0.05 },
-  });
-
-  const salad = await createChoice({
-    groupId: vegGroup.id,
-    name: "Side Salad",
-    nutrition: { kcal: 40, p: 2, c: 6, s: 3, f: 1, sat: 0.1, fib: 2, salt: 0.06 },
-  });
-
-  const water = await createChoice({
-    groupId: drinkGroup.id,
-    name: "Water",
-    nutrition: { kcal: 0, p: 0, c: 0, s: 0, f: 0, sat: 0, fib: 0, salt: 0 },
-  });
-
-  const orangeJuice = await createChoice({
-    groupId: drinkGroup.id,
-    name: "Orange Juice",
-    nutrition: { kcal: 90, p: 1.5, c: 20, s: 18, f: 0, sat: 0, fib: 0.3, salt: 0.02 },
-  });
-
-  const milk = await createChoice({
-    groupId: drinkGroup.id,
-    name: "Milk",
-    allergens: [allergenByName.Dairy].filter(Boolean),
-    nutrition: { kcal: 110, p: 6, c: 10, s: 10, f: 4.5, sat: 2.8, fib: 0, salt: 0.18 },
-  });
-
-  const fruitPot = await createChoice({
-    groupId: dessertGroup.id,
-    name: "Fruit Pot",
-    nutrition: { kcal: 120, p: 1.5, c: 28, s: 22, f: 0.5, sat: 0.1, fib: 4, salt: 0.02 },
-  });
-
-  const yoghurt = await createChoice({
-    groupId: dessertGroup.id,
-    name: "Yoghurt",
-    allergens: [allergenByName.Dairy].filter(Boolean),
-    nutrition: { kcal: 160, p: 8, c: 18, s: 16, f: 6, sat: 3.5, fib: 0, salt: 0.15 },
-  });
-
-  const flapjack = await createChoice({
-    groupId: dessertGroup.id,
-    name: "Oat Flapjack",
-    allergens: [allergenByName.Gluten].filter(Boolean),
-    nutrition: { kcal: 190, p: 4, c: 26, s: 11, f: 8, sat: 2, fib: 3, salt: 0.25 },
+  const wrapFillingsGroup = await prisma.mealGroup.create({
+    data: { name: "Wrap Filling", maxSelections: 1, active: true },
   });
 
   const tomatoSoup = await createChoice({
@@ -487,23 +457,97 @@ async function createBaseMealData() {
     nutrition: { kcal: 335, p: 19, c: 29, s: 3, f: 14, sat: 2.5, fib: 2.8, salt: 1.1 },
   });
 
-  const mayo = await createChoice({
-    groupId: sandwichCondimentGroup.id,
-    name: "Mayo",
-    allergens: [allergenByName.Egg].filter(Boolean),
-    nutrition: { kcal: 80, p: 0, c: 0.5, s: 0, f: 8, sat: 1.2, fib: 0, salt: 0.2 },
-  });
-
   const ketchup = await createChoice({
-    groupId: sandwichCondimentGroup.id,
+    groupId: sauceGroup.id,
     name: "Ketchup",
     nutrition: { kcal: 20, p: 0, c: 5, s: 4, f: 0, sat: 0, fib: 0.1, salt: 0.18 },
   });
 
-  const noSauce = await createChoice({
-    groupId: sandwichCondimentGroup.id,
-    name: "No Sauce",
+  const tomatoSauce = await createChoice({
+    groupId: sauceGroup.id,
+    name: "Tomato Sauce",
+    nutrition: { kcal: 18, p: 0, c: 4, s: 3, f: 0, sat: 0, fib: 0.1, salt: 0.16 },
+  });
+
+  const mildCurrySauce = await createChoice({
+    groupId: sauceGroup.id,
+    name: "Mild Curry Sauce",
+    allergens: [allergenByName.Dairy].filter(Boolean),
+    nutrition: { kcal: 45, p: 1, c: 5, s: 2, f: 2, sat: 1, fib: 0.3, salt: 0.28 },
+  });
+
+  const gravy = await createChoice({
+    groupId: sauceGroup.id,
+    name: "Gravy",
+    nutrition: { kcal: 25, p: 1, c: 3, s: 0.5, f: 1, sat: 0.2, fib: 0.1, salt: 0.35 },
+  });
+
+  const water = await createChoice({
+    groupId: drinkGroup.id,
+    name: "Water",
     nutrition: { kcal: 0, p: 0, c: 0, s: 0, f: 0, sat: 0, fib: 0, salt: 0 },
+  });
+
+  const orangeJuice = await createChoice({
+    groupId: drinkGroup.id,
+    name: "Orange Juice",
+    nutrition: { kcal: 90, p: 1.5, c: 20, s: 18, f: 0, sat: 0, fib: 0.3, salt: 0.02 },
+  });
+
+  const milk = await createChoice({
+    groupId: drinkGroup.id,
+    name: "Milk",
+    allergens: [allergenByName.Dairy].filter(Boolean),
+    nutrition: { kcal: 110, p: 6, c: 10, s: 10, f: 4.5, sat: 2.8, fib: 0, salt: 0.18 },
+  });
+
+  const rice = await createChoice({
+    groupId: sideGroup.id,
+    name: "Steamed Rice",
+    nutrition: { kcal: 180, p: 4, c: 38, s: 0, f: 1, sat: 0.2, fib: 1.2, salt: 0.02 },
+  });
+
+  const roastPotatoes = await createChoice({
+    groupId: sideGroup.id,
+    name: "Roast Potatoes",
+    nutrition: { kcal: 210, p: 4, c: 32, s: 1, f: 7, sat: 0.8, fib: 3.2, salt: 0.3 },
+  });
+
+  const chips = await createChoice({
+    groupId: sideGroup.id,
+    name: "Oven Chips",
+    nutrition: { kcal: 230, p: 3, c: 33, s: 0.5, f: 9, sat: 1, fib: 3, salt: 0.4 },
+  });
+
+  const naan = await createChoice({
+    groupId: sideGroup.id,
+    name: "Naan Bread",
+    allergens: [allergenByName.Gluten, allergenByName.Dairy].filter(Boolean),
+    nutrition: { kcal: 220, p: 6, c: 36, s: 3, f: 5, sat: 1.8, fib: 1.5, salt: 0.55 },
+  });
+
+  const peas = await createChoice({
+    groupId: vegGroup.id,
+    name: "Peas",
+    nutrition: { kcal: 70, p: 5, c: 10, s: 4, f: 1, sat: 0.1, fib: 4.5, salt: 0.02 },
+  });
+
+  const sweetcorn = await createChoice({
+    groupId: vegGroup.id,
+    name: "Sweetcorn",
+    nutrition: { kcal: 85, p: 3, c: 16, s: 6, f: 1.5, sat: 0.2, fib: 2.5, salt: 0.03 },
+  });
+
+  const mixedVeg = await createChoice({
+    groupId: vegGroup.id,
+    name: "Mixed Vegetables",
+    nutrition: { kcal: 65, p: 3, c: 11, s: 5, f: 1, sat: 0.2, fib: 4, salt: 0.05 },
+  });
+
+  const salad = await createChoice({
+    groupId: vegGroup.id,
+    name: "Side Salad",
+    nutrition: { kcal: 40, p: 2, c: 6, s: 3, f: 1, sat: 0.1, fib: 2, salt: 0.06 },
   });
 
   const chickenTikkaWrap = await createChoice({
@@ -527,54 +571,18 @@ async function createBaseMealData() {
     nutrition: { kcal: 360, p: 22, c: 31, s: 3, f: 15, sat: 2.6, fib: 3.2, salt: 1.1 },
   });
 
-  const tomatoSauce = await createChoice({
-    groupId: sauceGroup.id,
-    name: "Tomato Sauce",
-    nutrition: { kcal: 18, p: 0, c: 4, s: 3, f: 0, sat: 0, fib: 0.1, salt: 0.16 },
-  });
-
-  const mildCurrySauce = await createChoice({
-    groupId: sauceGroup.id,
-    name: "Mild Curry Sauce",
-    allergens: [allergenByName.Dairy].filter(Boolean),
-    nutrition: { kcal: 45, p: 1, c: 5, s: 2, f: 2, sat: 1, fib: 0.3, salt: 0.28 },
-  });
-
-  const gravy = await createChoice({
-    groupId: sauceGroup.id,
-    name: "Gravy",
-    nutrition: { kcal: 25, p: 1, c: 3, s: 0.5, f: 1, sat: 0.2, fib: 0.1, salt: 0.35 },
-  });
-
   return {
     allergenByName,
     groups: {
-      sideGroup,
-      vegGroup,
-      drinkGroup,
-      dessertGroup,
       soupGroup,
       sandwichTypeGroup,
-      sandwichCondimentGroup,
-      wrapFillingsGroup,
       sauceGroup,
+      drinkGroup,
+      sideGroup,
+      vegGroup,
+      wrapFillingsGroup,
     },
     choices: {
-      rice,
-      naan,
-      roastPotatoes,
-      pastaTwists,
-      chips,
-      peas,
-      sweetcorn,
-      mixedVeg,
-      salad,
-      water,
-      orangeJuice,
-      milk,
-      fruitPot,
-      yoghurt,
-      flapjack,
       tomatoSoup,
       vegetableSoup,
       chickenNoodleSoup,
@@ -582,15 +590,24 @@ async function createBaseMealData() {
       hamSandwich,
       cheeseSandwich,
       tunaSandwich,
-      mayo,
       ketchup,
-      noSauce,
-      chickenTikkaWrap,
-      falafelWrap,
-      periPeriChickenWrap,
       tomatoSauce,
       mildCurrySauce,
       gravy,
+      water,
+      orangeJuice,
+      milk,
+      rice,
+      roastPotatoes,
+      chips,
+      naan,
+      peas,
+      sweetcorn,
+      mixedVeg,
+      salad,
+      chickenTikkaWrap,
+      falafelWrap,
+      periPeriChickenWrap,
     },
   };
 }
@@ -616,148 +633,140 @@ async function linkAllGroupsAndChoicesToMenu(menuId, mealData) {
   });
 }
 
-async function createMenusForSchool(schoolId, schoolName, mealData) {
+async function createGlobalMenus(mealData) {
   const standardMenu = await prisma.menu.create({
     data: {
-      name: `${schoolName} Standard Menu`,
+      name: "Standard",
       active: true,
-      schoolLinks: {
-        create: [{ schoolId }],
-      },
     },
   });
 
   const halalMenu = await prisma.menu.create({
     data: {
-      name: `${schoolName} Halal Menu`,
+      name: "HALAL",
       active: true,
-      schoolLinks: {
-        create: [{ schoolId }],
-      },
     },
   });
 
   await linkAllGroupsAndChoicesToMenu(standardMenu.id, mealData);
   await linkAllGroupsAndChoicesToMenu(halalMenu.id, mealData);
 
-  // Standard menu: 4 meal options
-  const standardChickenCurry = await prisma.mealOption.create({
-    data: {
-      menuId: standardMenu.id,
-      name: "Chicken Curry",
-      stickerCount: 1,
-      active: true,
-    },
+  // STANDARD MENU
+  const standardChickenCurry = await createMealOption({
+    menuId: standardMenu.id,
+    name: "Chicken Curry",
+    stickerCount: 1,
+    imageUrl: MENU_ITEM_IMAGES.standardChickenCurry,
+    nutrition: MEAL_OPTION_NUTRITION.chickenCurry,
   });
 
-  const standardPastaBolognese = await prisma.mealOption.create({
-    data: {
-      menuId: standardMenu.id,
-      name: "Pasta Bolognese",
-      stickerCount: 1,
-      active: true,
-    },
+  const standardPizzaSliceWithSide = await createMealOption({
+    menuId: standardMenu.id,
+    name: "Pizza Slice w/ Side",
+    stickerCount: 1,
+    imageUrl: MENU_ITEM_IMAGES.pizzaSliceWithSide,
+    nutrition: MEAL_OPTION_NUTRITION.pizzaSliceWithSide,
   });
 
-  const standardSausageAndChips = await prisma.mealOption.create({
-    data: {
-      menuId: standardMenu.id,
-      name: "Sausage & Chips",
-      stickerCount: 1,
-      active: true,
-    },
-  });
-
-  const standardSoupAndSandwich = await prisma.mealOption.create({
-    data: {
-      menuId: standardMenu.id,
-      name: "Soup + Sandwich + Condiment",
-      stickerCount: 2,
-      active: true,
-    },
+  const standardSoupSandwich = await createMealOption({
+    menuId: standardMenu.id,
+    name: "Soup + Sandwich",
+    stickerCount: 2,
+    imageUrl: MENU_ITEM_IMAGES.standardSoupSandwich,
+    nutrition: MEAL_OPTION_NUTRITION.soupAndSandwich,
   });
 
   await prisma.mealOptionMealGroup.createMany({
     data: [
-      { mealOptionId: standardChickenCurry.id, groupId: mealData.groups.sideGroup.id },
-      { mealOptionId: standardChickenCurry.id, groupId: mealData.groups.vegGroup.id },
-      { mealOptionId: standardChickenCurry.id, groupId: mealData.groups.drinkGroup.id },
-      { mealOptionId: standardChickenCurry.id, groupId: mealData.groups.dessertGroup.id },
+      // Chicken Curry
+      {
+        mealOptionId: standardChickenCurry.id,
+        groupId: mealData.groups.sideGroup.id,
+      },
+      {
+        mealOptionId: standardChickenCurry.id,
+        groupId: mealData.groups.vegGroup.id,
+      },
 
-      { mealOptionId: standardPastaBolognese.id, groupId: mealData.groups.vegGroup.id },
-      { mealOptionId: standardPastaBolognese.id, groupId: mealData.groups.drinkGroup.id },
-      { mealOptionId: standardPastaBolognese.id, groupId: mealData.groups.dessertGroup.id },
+      // Pizza Slice w/ Side
+      {
+        mealOptionId: standardPizzaSliceWithSide.id,
+        groupId: mealData.groups.sauceGroup.id,
+      },
+      {
+        mealOptionId: standardPizzaSliceWithSide.id,
+        groupId: mealData.groups.sideGroup.id,
+      },
 
-      { mealOptionId: standardSausageAndChips.id, groupId: mealData.groups.sauceGroup.id },
-      { mealOptionId: standardSausageAndChips.id, groupId: mealData.groups.drinkGroup.id },
-      { mealOptionId: standardSausageAndChips.id, groupId: mealData.groups.dessertGroup.id },
-
-      { mealOptionId: standardSoupAndSandwich.id, groupId: mealData.groups.soupGroup.id },
-      { mealOptionId: standardSoupAndSandwich.id, groupId: mealData.groups.sandwichTypeGroup.id },
-      { mealOptionId: standardSoupAndSandwich.id, groupId: mealData.groups.sandwichCondimentGroup.id },
-      { mealOptionId: standardSoupAndSandwich.id, groupId: mealData.groups.drinkGroup.id },
+      // Soup + Sandwich
+      {
+        mealOptionId: standardSoupSandwich.id,
+        groupId: mealData.groups.soupGroup.id,
+      },
+      {
+        mealOptionId: standardSoupSandwich.id,
+        groupId: mealData.groups.sandwichTypeGroup.id,
+      },
     ],
     skipDuplicates: true,
   });
 
-  // Halal menu: 4 meal options
-  const halalChickenCurry = await prisma.mealOption.create({
-    data: {
-      menuId: halalMenu.id,
-      name: "Halal Chicken Curry",
-      stickerCount: 1,
-      active: true,
-    },
+  // HALAL MENU
+  const halalChickenCurry = await createMealOption({
+    menuId: halalMenu.id,
+    name: "HALAL Chicken Curry",
+    stickerCount: 1,
+    imageUrl: MENU_ITEM_IMAGES.halalChickenCurry,
+    nutrition: MEAL_OPTION_NUTRITION.halalChickenCurry,
   });
 
-  const halalChickenMeatballs = await prisma.mealOption.create({
-    data: {
-      menuId: halalMenu.id,
-      name: "Halal Chicken Meatballs",
-      stickerCount: 1,
-      active: true,
-    },
+  const halalSoupSandwich = await createMealOption({
+    menuId: halalMenu.id,
+    name: "Soup + Sandwich",
+    stickerCount: 2,
+    imageUrl: MENU_ITEM_IMAGES.halalSoupSandwich,
+    nutrition: MEAL_OPTION_NUTRITION.soupAndSandwich,
   });
 
-  const halalWrapBox = await prisma.mealOption.create({
-    data: {
-      menuId: halalMenu.id,
-      name: "Wrap Box",
-      stickerCount: 1,
-      active: true,
-    },
-  });
-
-  const halalSoupAndSandwich = await prisma.mealOption.create({
-    data: {
-      menuId: halalMenu.id,
-      name: "Halal Soup + Sandwich + Condiment",
-      stickerCount: 2,
-      active: true,
-    },
+  const halalWrap = await createMealOption({
+    menuId: halalMenu.id,
+    name: "Wrap",
+    stickerCount: 1,
+    imageUrl: MENU_ITEM_IMAGES.wrap,
+    nutrition: MEAL_OPTION_NUTRITION.wrap,
   });
 
   await prisma.mealOptionMealGroup.createMany({
     data: [
-      { mealOptionId: halalChickenCurry.id, groupId: mealData.groups.sideGroup.id },
-      { mealOptionId: halalChickenCurry.id, groupId: mealData.groups.vegGroup.id },
-      { mealOptionId: halalChickenCurry.id, groupId: mealData.groups.drinkGroup.id },
-      { mealOptionId: halalChickenCurry.id, groupId: mealData.groups.dessertGroup.id },
+      // HALAL Chicken Curry
+      {
+        mealOptionId: halalChickenCurry.id,
+        groupId: mealData.groups.sideGroup.id,
+      },
+      {
+        mealOptionId: halalChickenCurry.id,
+        groupId: mealData.groups.sauceGroup.id,
+      },
 
-      { mealOptionId: halalChickenMeatballs.id, groupId: mealData.groups.sideGroup.id },
-      { mealOptionId: halalChickenMeatballs.id, groupId: mealData.groups.vegGroup.id },
-      { mealOptionId: halalChickenMeatballs.id, groupId: mealData.groups.drinkGroup.id },
-      { mealOptionId: halalChickenMeatballs.id, groupId: mealData.groups.dessertGroup.id },
+      // Soup + Sandwich
+      {
+        mealOptionId: halalSoupSandwich.id,
+        groupId: mealData.groups.soupGroup.id,
+      },
+      {
+        mealOptionId: halalSoupSandwich.id,
+        groupId: mealData.groups.sandwichTypeGroup.id,
+      },
 
-      { mealOptionId: halalWrapBox.id, groupId: mealData.groups.wrapFillingsGroup.id },
-      { mealOptionId: halalWrapBox.id, groupId: mealData.groups.sideGroup.id },
-      { mealOptionId: halalWrapBox.id, groupId: mealData.groups.drinkGroup.id },
-      { mealOptionId: halalWrapBox.id, groupId: mealData.groups.dessertGroup.id },
-
-      { mealOptionId: halalSoupAndSandwich.id, groupId: mealData.groups.soupGroup.id },
-      { mealOptionId: halalSoupAndSandwich.id, groupId: mealData.groups.sandwichTypeGroup.id },
-      { mealOptionId: halalSoupAndSandwich.id, groupId: mealData.groups.sandwichCondimentGroup.id },
-      { mealOptionId: halalSoupAndSandwich.id, groupId: mealData.groups.drinkGroup.id },
+      // Wrap
+      {
+        mealOptionId: halalWrap.id,
+        groupId: mealData.groups.wrapFillingsGroup.id,
+      },
+      {
+        mealOptionId: halalWrap.id,
+        groupId: mealData.groups.drinkGroup.id,
+      },
     ],
     skipDuplicates: true,
   });
@@ -767,15 +776,13 @@ async function createMenusForSchool(schoolId, schoolName, mealData) {
     halalMenu,
     standardMealOptions: {
       standardChickenCurry,
-      standardPastaBolognese,
-      standardSausageAndChips,
-      standardSoupAndSandwich,
+      standardPizzaSliceWithSide,
+      standardSoupSandwich,
     },
     halalMealOptions: {
       halalChickenCurry,
-      halalChickenMeatballs,
-      halalWrapBox,
-      halalSoupAndSandwich,
+      halalSoupSandwich,
+      halalWrap,
     },
   };
 }
@@ -801,6 +808,7 @@ async function main() {
   });
 
   const mealData = await createBaseMealData();
+  const globalMenus = await createGlobalMenus(mealData);
 
   const schools = [];
   let globalPupilIndex = 0;
@@ -813,8 +821,16 @@ async function main() {
   for (let i = 0; i < SCHOOL_COUNT; i++) {
     const school = await prisma.school.create({
       data: {
-        name: SCHOOL_NAMES[i] || `Test School ${i + 1}`,
+        name: SCHOOL_NAMES[i] || `Donegal School ${i + 1}`,
       },
+    });
+
+    await prisma.menuSchool.createMany({
+      data: [
+        { schoolId: school.id, menuId: globalMenus.standardMenu.id },
+        { schoolId: school.id, menuId: globalMenus.halalMenu.id },
+      ],
+      skipDuplicates: true,
     });
 
     const schoolAdmin = await prisma.user.upsert({
@@ -832,8 +848,6 @@ async function main() {
       },
       select: { id: true, email: true, name: true },
     });
-
-    const menuBundle = await createMenusForSchool(school.id, school.name, mealData);
 
     await prisma.schedule.createMany({
       data: [
@@ -897,6 +911,7 @@ async function main() {
 
         const pupilName = makePupilName(globalPupilIndex - 1);
         const pupilLastName = pupilName.split(" ").slice(-1)[0];
+
         const parent = await prisma.user.create({
           data: {
             email: parentEmail(i + 1, j + 1, k + 1),
@@ -917,7 +932,9 @@ async function main() {
             : [];
 
         const menuId =
-          globalPupilIndex % 2 === 0 ? menuBundle.standardMenu.id : menuBundle.halalMenu.id;
+          globalPupilIndex % 2 === 0
+            ? globalMenus.standardMenu.id
+            : globalMenus.halalMenu.id;
 
         const pupil = await prisma.pupil.create({
           data: {
@@ -952,14 +969,6 @@ async function main() {
     schools.push({
       school,
       schoolAdmin,
-      menus: {
-        standardMenu: menuBundle.standardMenu,
-        halalMenu: menuBundle.halalMenu,
-      },
-      mealOptions: {
-        ...menuBundle.standardMealOptions,
-        ...menuBundle.halalMealOptions,
-      },
       classrooms,
     });
   }
@@ -969,88 +978,58 @@ async function main() {
   const nextDays = nextSevenDays(new Date());
   const c = mealData.choices;
 
+const standardPlans = [
+  {
+    mealOptionId: globalMenus.standardMealOptions.standardChickenCurry.id,
+    buildItems: () => [
+      pickOne([c.rice, c.roastPotatoes, c.chips, c.naan]),
+      pickOne([c.peas, c.sweetcorn, c.mixedVeg, c.salad]),
+    ],
+  },
+  {
+    mealOptionId: globalMenus.standardMealOptions.standardPizzaSliceWithSide.id,
+    buildItems: () => [
+      pickOne([c.ketchup, c.tomatoSauce, c.gravy, c.mildCurrySauce]),
+      pickOne([c.rice, c.roastPotatoes, c.chips, c.naan]),
+    ],
+  },
+  {
+    mealOptionId: globalMenus.standardMealOptions.standardSoupSandwich.id,
+    buildItems: () => [
+      pickOne([c.tomatoSoup, c.vegetableSoup, c.chickenNoodleSoup]),
+      pickOne([c.chickenSandwich, c.hamSandwich, c.cheeseSandwich, c.tunaSandwich]),
+    ],
+  },
+];
+
+const halalPlans = [
+  {
+    mealOptionId: globalMenus.halalMealOptions.halalChickenCurry.id,
+    buildItems: () => [
+      pickOne([c.rice, c.roastPotatoes, c.chips, c.naan]),
+      pickOne([c.tomatoSauce, c.mildCurrySauce, c.gravy, c.ketchup]),
+    ],
+  },
+  {
+    mealOptionId: globalMenus.halalMealOptions.halalSoupSandwich.id,
+    buildItems: () => [
+      pickOne([c.tomatoSoup, c.vegetableSoup, c.chickenNoodleSoup]),
+      pickOne([c.chickenSandwich, c.cheeseSandwich]),
+    ],
+  },
+  {
+    mealOptionId: globalMenus.halalMealOptions.halalWrap.id,
+    buildItems: () => [
+      pickOne([c.chickenTikkaWrap, c.falafelWrap, c.periPeriChickenWrap]),
+      pickOne([c.water, c.orangeJuice, c.milk]),
+    ],
+  },
+];
   for (const schoolEntry of schools) {
-    const standardPlans = [
-      {
-        mealOptionId: schoolEntry.mealOptions.standardChickenCurry.id,
-        buildItems: () => [
-          pickOne([c.rice, c.naan]),
-          pickOne([c.peas, c.sweetcorn, c.mixedVeg]),
-          pickOne([c.water, c.orangeJuice, c.milk]),
-          pickOne([c.fruitPot, c.yoghurt, c.flapjack]),
-        ],
-      },
-      {
-        mealOptionId: schoolEntry.mealOptions.standardPastaBolognese.id,
-        buildItems: () => [
-          pickOne([c.peas, c.sweetcorn, c.mixedVeg, c.salad]),
-          pickOne([c.water, c.orangeJuice, c.milk]),
-          pickOne([c.fruitPot, c.yoghurt, c.flapjack]),
-        ],
-      },
-      {
-        mealOptionId: schoolEntry.mealOptions.standardSausageAndChips.id,
-        buildItems: () => [
-          pickOne([c.ketchup, c.tomatoSauce, c.gravy]),
-          pickOne([c.water, c.orangeJuice, c.milk]),
-          pickOne([c.fruitPot, c.yoghurt, c.flapjack]),
-        ],
-      },
-      {
-        mealOptionId: schoolEntry.mealOptions.standardSoupAndSandwich.id,
-        buildItems: () => [
-          pickOne([c.tomatoSoup, c.vegetableSoup, c.chickenNoodleSoup]),
-          pickOne([c.chickenSandwich, c.hamSandwich, c.cheeseSandwich, c.tunaSandwich]),
-          pickOne([c.mayo, c.ketchup, c.noSauce]),
-          pickOne([c.water, c.orangeJuice, c.milk]),
-        ],
-      },
-    ];
-
-    const halalPlans = [
-      {
-        mealOptionId: schoolEntry.mealOptions.halalChickenCurry.id,
-        buildItems: () => [
-          pickOne([c.rice, c.naan]),
-          pickOne([c.peas, c.sweetcorn, c.mixedVeg]),
-          pickOne([c.water, c.orangeJuice, c.milk]),
-          pickOne([c.fruitPot, c.yoghurt, c.flapjack]),
-        ],
-      },
-      {
-        mealOptionId: schoolEntry.mealOptions.halalChickenMeatballs.id,
-        buildItems: () => [
-          pickOne([c.pastaTwists, c.roastPotatoes]),
-          pickOne([c.peas, c.sweetcorn, c.mixedVeg, c.salad]),
-          pickOne([c.water, c.orangeJuice, c.milk]),
-          pickOne([c.fruitPot, c.yoghurt, c.flapjack]),
-        ],
-      },
-      {
-        mealOptionId: schoolEntry.mealOptions.halalWrapBox.id,
-        buildItems: () => [
-          pickOne([c.chickenTikkaWrap, c.falafelWrap, c.periPeriChickenWrap]),
-          pickOne([c.chips, c.roastPotatoes, c.salad]),
-          pickOne([c.water, c.orangeJuice, c.milk]),
-          pickOne([c.fruitPot, c.yoghurt, c.flapjack]),
-        ],
-      },
-      {
-        mealOptionId: schoolEntry.mealOptions.halalSoupAndSandwich.id,
-        buildItems: () => [
-          pickOne([c.tomatoSoup, c.vegetableSoup, c.chickenNoodleSoup]),
-          // keep halal-safe sandwich choices here
-          pickOne([c.chickenSandwich, c.cheeseSandwich]),
-          pickOne([c.mayo, c.ketchup, c.noSauce]),
-          pickOne([c.water, c.orangeJuice, c.milk]),
-        ],
-      },
-    ];
-
     for (const classEntry of schoolEntry.classrooms) {
       for (const pupilEntry of classEntry.pupils) {
         const plans =
-          pupilEntry.menuId === schoolEntry.menus.halalMenu.id ? halalPlans : standardPlans;
+          pupilEntry.menuId === globalMenus.halalMenu.id ? halalPlans : standardPlans;
 
         for (const date of nextDays) {
           const plan = pickOne(plans);
@@ -1098,8 +1077,9 @@ async function main() {
   console.log(`   Classrooms: ${totalClassrooms}`);
   console.log(`   Pupils: ${totalPupils}`);
   console.log(`   Orders created for dates: ${nextDays.map((d) => d.toDateString()).join(", ")}`);
-  console.log(`   Menus per school: 2 (Standard + Halal)`);
-  console.log(`   Meal options per menu: 4`);
+  console.log(`   Global menus: 2 (Standard + HALAL)`);
+  console.log(`   Meal options per menu: 3`);
+  console.log(`   Meal groups per option: 2`);
   console.log(`   Site admin: admin@school.io`);
   console.log(`   Example school admin: ${schools[0]?.schoolAdmin.email || "n/a"}`);
   console.log(`   Example teacher: ${schools[0]?.classrooms[0]?.teacher.email || "n/a"}`);

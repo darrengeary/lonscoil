@@ -10,6 +10,7 @@ import {
   parseISO,
   startOfWeek,
 } from "date-fns";
+import { AnimatePresence, motion } from "motion/react";
 import { DashboardHeader } from "@/components/dashboard/header";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -104,10 +105,11 @@ type OrderingConfig = {
 };
 
 type DaySelection = {
-  menuId: string | null;
   mealOptionId: string | null;
   itemsByChoiceId: Record<string, { selectedIngredients: string[] }>;
 };
+
+type PendingScrollTarget = "choices" | "meals" | null;
 
 const DATE_FMT = "yyyy-MM-dd";
 const weekdayLabels = ["Mon", "Tue", "Wed", "Thu", "Fri"];
@@ -122,16 +124,12 @@ async function fetchJSON<T>(url: string, fallback: T): Promise<T> {
   }
 }
 
-function buildSelectionFromEffectiveOrder(
-  order: EffectiveOrder,
-  menuId: string | null
-): DaySelection {
+function buildSelectionFromEffectiveOrder(order: EffectiveOrder): DaySelection {
   if (!order) {
-    return { menuId, mealOptionId: null, itemsByChoiceId: {} };
+    return { mealOptionId: null, itemsByChoiceId: {} };
   }
 
   return {
-    menuId,
     mealOptionId: order.mealOptionId,
     itemsByChoiceId: Object.fromEntries(
       order.items.map((i) => [
@@ -165,30 +163,13 @@ function isDayComplete(day: DaySelection | undefined, mealOptions: MealOption[])
 function pickNextIncompleteDate(
   dates: string[],
   selections: Record<string, DaySelection>,
-  getMealOptionsForDate: (date: string, day: DaySelection | undefined) => MealOption[]
+  mealOptionsByDate: Record<string, MealOption[]>
 ) {
   return (
-    dates.find((date) => !isDayComplete(selections[date], getMealOptionsForDate(date, selections[date]))) ??
+    dates.find((date) => !isDayComplete(selections[date], mealOptionsByDate[date] ?? [])) ??
     dates[0] ??
     null
   );
-}
-
-function normalizeDaySelection(day: DaySelection) {
-  const sortedChoiceIds = Object.keys(day.itemsByChoiceId).sort();
-
-  return {
-    menuId: day.menuId,
-    mealOptionId: day.mealOptionId,
-    itemsByChoiceId: Object.fromEntries(
-      sortedChoiceIds.map((choiceId) => [
-        choiceId,
-        {
-          selectedIngredients: [...(day.itemsByChoiceId[choiceId]?.selectedIngredients ?? [])].sort(),
-        },
-      ])
-    ),
-  };
 }
 
 function getAllergenColorClass(name: string) {
@@ -239,16 +220,12 @@ function NutritionRow({
   );
 }
 
-function sanitizeSelectionForMeal(
-  day: DaySelection,
-  meal: MealOption | null
-): DaySelection {
-  if (!day.mealOptionId || !meal) {
-    return {
-      menuId: day.menuId,
-      mealOptionId: day.mealOptionId,
-      itemsByChoiceId: {},
-    };
+function sanitizeSelectionForDate(day: DaySelection, mealOptions: MealOption[]): DaySelection {
+  if (!day.mealOptionId) return { mealOptionId: null, itemsByChoiceId: {} };
+
+  const meal = mealOptions.find((m) => m.id === day.mealOptionId);
+  if (!meal) {
+    return { mealOptionId: null, itemsByChoiceId: {} };
   }
 
   const validChoices = new Map<string, string[]>();
@@ -269,7 +246,6 @@ function sanitizeSelectionForMeal(
   }
 
   return {
-    menuId: day.menuId,
     mealOptionId: day.mealOptionId,
     itemsByChoiceId: nextItemsByChoiceId,
   };
@@ -285,9 +261,43 @@ function getChosenChoiceNames(day: DaySelection | undefined, meal: MealOption | 
   );
 }
 
+function getChosenChoiceNamesForMeal(meal: MealOption, day: DaySelection | null | undefined) {
+  if (!day) return [];
+
+  return meal.groups.flatMap((group) =>
+    group.choices
+      .filter((choice) => !!day.itemsByChoiceId[choice.id])
+      .map((choice) => choice.name)
+  );
+}
+
+function moveMealToFront(meals: MealOption[], mealOptionId?: string | null) {
+  if (!mealOptionId) return meals;
+  const selected = meals.find((m) => m.id === mealOptionId);
+  if (!selected) return meals;
+  return [selected, ...meals.filter((m) => m.id !== mealOptionId)];
+}
+
 function possessive(name: string) {
   if (!name) return "Pupil's";
   return name.endsWith("s") ? `${name}'` : `${name}'s`;
+}
+
+function parseHolidayEntry(entry: string) {
+  const dateMatch = entry.match(/^\d{4}-\d{2}-\d{2}/);
+  const date = dateMatch?.[0] ?? "";
+  let label = entry.slice(date.length).trim();
+
+  if (label.startsWith("|") || label.startsWith(":")) {
+    label = label.slice(1).trim();
+  } else if (label.startsWith("-")) {
+    label = label.slice(1).trim();
+  }
+
+  return {
+    date,
+    label: label || "Holiday",
+  };
 }
 
 export default function ParentOrdersPage() {
@@ -303,19 +313,27 @@ export default function ParentOrdersPage() {
   const [loadingWeek, setLoadingWeek] = useState(false);
   const [loadingMenu, setLoadingMenu] = useState(false);
 
-  const [mealOptionsByMenu, setMealOptionsByMenu] = useState<
-    Record<string, Record<string, MealOption[]>>
-  >({});
+  const [mealOptionsByDate, setMealOptionsByDate] = useState<Record<string, MealOption[]>>({});
+  const [mealOrderByDate, setMealOrderByDate] = useState<Record<string, string[]>>({});
 
   const [selections, setSelections] = useState<Record<string, DaySelection>>({});
+const [initialSelections, setInitialSelections] = useState<Record<string, DaySelection>>({});
+
   const [saving, setSaving] = useState(false);
   const [activeDate, setActiveDate] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
 
   const [mealInfo, setMealInfo] = useState<MealOption | null>(null);
   const [choiceInfo, setChoiceInfo] = useState<Choice | null>(null);
+  const [pendingScrollTarget, setPendingScrollTarget] = useState<PendingScrollTarget>(null);
 
-  const mealGroupsRef = useRef<HTMLDivElement | null>(null);
+  const topStickyRef = useRef<HTMLDivElement | null>(null);
+  const subStickyRef = useRef<HTMLDivElement | null>(null);
+  const mealOptionsRef = useRef<HTMLDivElement | null>(null);
+  const choicesSectionRef = useRef<HTMLDivElement | null>(null);
+
+  const [topStickyHeight, setTopStickyHeight] = useState(0);
+  const [subStickyHeight, setSubStickyHeight] = useState(0);
 
   useEffect(() => {
     fetchJSON<Pupil[]>("/api/pupils?parent=true", []).then((data) => {
@@ -325,11 +343,6 @@ export default function ParentOrdersPage() {
       }
     });
   }, [selectedPupil]);
-
-  function getMealOptionsForDay(date: string, day: DaySelection | undefined) {
-    if (!day?.menuId) return [];
-    return mealOptionsByMenu[day.menuId]?.[date] ?? [];
-  }
 
   useEffect(() => {
     if (!selectedPupil) return;
@@ -348,45 +361,35 @@ export default function ParentOrdersPage() {
         if (!payload) return;
 
         setSelectedMenuId(payload.selectedMenuId);
+        setMealOptionsByDate(payload.mealOptionsByDate);
 
-        setMealOptionsByMenu({
-          [payload.selectedMenuId]: payload.mealOptionsByDate,
-        });
+        const nextMealOrderByDate: Record<string, string[]> = {};
+        for (const date of payload.weekDates) {
+          const meals = payload.mealOptionsByDate[date] ?? [];
+          const selectedMealId = payload.effectiveOrders[date]?.mealOptionId ?? null;
+          nextMealOrderByDate[date] = moveMealToFront(meals, selectedMealId).map((m) => m.id);
+        } 
+        setMealOrderByDate(nextMealOrderByDate);
 
         const nextSelections: Record<string, DaySelection> = {};
         for (const date of payload.weekDates) {
-          const base = buildSelectionFromEffectiveOrder(
-            payload.effectiveOrders[date] ?? null,
-            payload.selectedMenuId
-          );
-
-          const meal =
-            base.mealOptionId
-              ? (payload.mealOptionsByDate[date] ?? []).find((m) => m.id === base.mealOptionId) ?? null
-              : null;
-
-          nextSelections[date] = normalizeDaySelection(
-            sanitizeSelectionForMeal(base, meal)
+          nextSelections[date] = sanitizeSelectionForDate(
+            buildSelectionFromEffectiveOrder(payload.effectiveOrders[date] ?? null),
+            payload.mealOptionsByDate[date] ?? []
           );
         }
-
-        setSelections(nextSelections);
-        setDirty(false);
-        setActiveDate(
-          pickNextIncompleteDate(payload.orderable, nextSelections, (date, day) => {
-            if (day?.menuId === payload.selectedMenuId) {
-              return payload.mealOptionsByDate[date] ?? [];
-            }
-            return getMealOptionsForDay(date, day);
-          })
-        );
+setSelections(nextSelections);
+setInitialSelections(clone(nextSelections));
+setDirty(false);
+setActiveDate(
+  pickNextIncompleteDate(payload.orderable, nextSelections, payload.mealOptionsByDate)
+);
       })
       .finally(() => setLoadingWeek(false));
   }, [selectedPupil, weekStart]);
 
   useEffect(() => {
     if (!selectedPupil || !selectedMenuId || !config) return;
-    if (mealOptionsByMenu[selectedMenuId]) return;
 
     setLoadingMenu(true);
 
@@ -400,13 +403,62 @@ export default function ParentOrdersPage() {
       .then((payload) => {
         if (!payload) return;
 
-        setMealOptionsByMenu((prev) => ({
-          ...prev,
-          [selectedMenuId]: payload.mealOptionsByDate,
-        }));
+        setMealOptionsByDate(payload.mealOptionsByDate);
+
+        setMealOrderByDate((prev) => {
+          const next: Record<string, string[]> = { ...prev };
+
+          for (const date of payload.weekDates) {
+            const meals = payload.mealOptionsByDate[date] ?? [];
+            const existingOrder = prev[date] ?? [];
+            const existingSet = new Set(existingOrder);
+
+            const kept = existingOrder.filter((id) => meals.some((m) => m.id === id));
+            const missing = meals.filter((m) => !existingSet.has(m.id)).map((m) => m.id);
+
+            next[date] = [...kept, ...missing];
+          }
+
+          return next;
+        });
+
+        setSelections((prev) => {
+          const next = { ...prev };
+          for (const date of payload.weekDates) {
+            if (!next[date]) continue;
+            next[date] = sanitizeSelectionForDate(next[date], payload.mealOptionsByDate[date] ?? []);
+          }
+          return next;
+        });
       })
       .finally(() => setLoadingMenu(false));
-  }, [selectedMenuId, selectedPupil, weekStart, config, mealOptionsByMenu]);
+  }, [selectedMenuId, selectedPupil, config, weekStart]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const measure = () => {
+      setTopStickyHeight(topStickyRef.current?.offsetHeight ?? 0);
+      setSubStickyHeight(subStickyRef.current?.offsetHeight ?? 0);
+    };
+
+    measure();
+
+    const observer =
+      typeof ResizeObserver !== "undefined"
+        ? new ResizeObserver(() => measure())
+        : null;
+
+    if (observer && topStickyRef.current) observer.observe(topStickyRef.current);
+    if (observer && subStickyRef.current) observer.observe(subStickyRef.current);
+
+    window.addEventListener("resize", measure);
+
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener("resize", measure);
+    };
+  }, [dirty, loadingWeek, config, activeDate]);
 
   const orderableDates = config?.orderable ?? [];
   const isLocked = !!config?.cutoffPassed;
@@ -420,30 +472,37 @@ export default function ParentOrdersPage() {
   const weekComplete = useMemo(() => {
     if (!config) return false;
     return orderableDates.every((date) =>
-      isDayComplete(selections[date], getMealOptionsForDay(date, selections[date]))
+      isDayComplete(selections[date], mealOptionsByDate[date] ?? [])
     );
-  }, [config, orderableDates, selections, mealOptionsByMenu]);
+  }, [config, orderableDates, selections, mealOptionsByDate]);
 
   const progress = useMemo(() => {
     if (!config) return { done: 0, total: 0 };
     const total = orderableDates.length;
     const done = orderableDates.filter((date) =>
-      isDayComplete(selections[date], getMealOptionsForDay(date, selections[date]))
+      isDayComplete(selections[date], mealOptionsByDate[date] ?? [])
     ).length;
     return { done, total };
-  }, [config, orderableDates, selections, mealOptionsByMenu]);
+  }, [config, orderableDates, selections, mealOptionsByDate]);
 
-  const activeMealOptions =
-    activeDate ? mealOptionsByMenu[selectedMenuId]?.[activeDate] ?? [] : [];
-
+  const activeMealOptions = activeDate ? mealOptionsByDate[activeDate] ?? [] : [];
   const activeSelection = activeDate ? selections[activeDate] : null;
-
   const activeMealOption =
-    activeDate && activeSelection?.mealOptionId && activeSelection?.menuId
-      ? (mealOptionsByMenu[activeSelection.menuId]?.[activeDate] ?? []).find(
-          (m) => m.id === activeSelection.mealOptionId
-        ) ?? null
+    activeSelection?.mealOptionId
+      ? activeMealOptions.find((m) => m.id === activeSelection.mealOptionId) ?? null
       : null;
+
+  const orderedActiveMealOptions = useMemo(() => {
+    const meals = activeMealOptions;
+    const order = activeDate ? mealOrderByDate[activeDate] ?? [] : [];
+    if (!order.length) return meals;
+
+    const byId = new Map(meals.map((meal) => [meal.id, meal]));
+    const ordered = order.map((id) => byId.get(id)).filter(Boolean) as MealOption[];
+    const leftovers = meals.filter((meal) => !order.includes(meal.id));
+
+    return [...ordered, ...leftovers];
+  }, [activeMealOptions, activeDate, mealOrderByDate]);
 
   const activeOrderableIndex = activeDate ? orderableDates.indexOf(activeDate) : -1;
   const nextOrderableDate =
@@ -456,20 +515,47 @@ export default function ParentOrdersPage() {
     orderableDates.length > 0 &&
     orderableDates[orderableDates.length - 1] === activeDate;
 
-  useEffect(() => {
-    if (!activeSelection?.mealOptionId) return;
+  const holidayLabel = config?.holidays?.[0]
+    ? parseHolidayEntry(config.holidays[0]).label
+    : null;
+
+  const subStickyTop = topStickyHeight;
+  const mobileScrollOffset = topStickyHeight + subStickyHeight + 12;
+
+  function scrollToTarget(ref: React.RefObject<HTMLElement>) {
     if (typeof window === "undefined") return;
-    if (window.innerWidth >= 768) return;
+    if (window.innerWidth >= 640) return;
+    if (!ref.current) return;
 
-    const id = window.requestAnimationFrame(() => {
-      mealGroupsRef.current?.scrollIntoView({
-        behavior: "smooth",
-        block: "start",
-      });
+    const top =
+      window.scrollY + ref.current.getBoundingClientRect().top - mobileScrollOffset;
+
+    window.scrollTo({
+      top: Math.max(0, top),
+      behavior: "smooth",
     });
+  }
 
-    return () => window.cancelAnimationFrame(id);
-  }, [activeDate, activeSelection?.mealOptionId]);
+  useEffect(() => {
+    if (!pendingScrollTarget) return;
+    if (typeof window === "undefined") return;
+    if (window.innerWidth >= 640) {
+      setPendingScrollTarget(null);
+      return;
+    }
+
+    const targetRef =
+      pendingScrollTarget === "choices" ? choicesSectionRef : mealOptionsRef;
+
+    if (!targetRef.current) return;
+
+    const timer = window.setTimeout(() => {
+      scrollToTarget(targetRef);
+      setPendingScrollTarget(null);
+    }, 80);
+
+    return () => window.clearTimeout(timer);
+  }, [pendingScrollTarget, activeDate, activeMealOption, loadingMenu, mobileScrollOffset]);
 
   function handleMenuChange(nextMenuId: string) {
     if (isLocked || loadingMenu || loadingWeek || saving) return;
@@ -480,32 +566,37 @@ export default function ParentOrdersPage() {
   function setMealOption(date: string, mealOptionId: string) {
     if (isLocked) return;
 
-    const meal = (mealOptionsByMenu[selectedMenuId]?.[date] ?? []).find(
-      (m) => m.id === mealOptionId
-    );
+    const meal = (mealOptionsByDate[date] ?? []).find((m) => m.id === mealOptionId);
     if (!meal) return;
 
     setSelections((prev) => ({
       ...prev,
       [date]: {
-        menuId: selectedMenuId,
         mealOptionId,
         itemsByChoiceId: {},
       },
     }));
 
+    setMealOrderByDate((prev) => {
+      const currentOrder =
+        prev[date]?.filter((id) => (mealOptionsByDate[date] ?? []).some((m) => m.id === id)) ??
+        (mealOptionsByDate[date] ?? []).map((m) => m.id);
+
+      return {
+        ...prev,
+        [date]: [mealOptionId, ...currentOrder.filter((id) => id !== mealOptionId)],
+      };
+    });
+
     setDirty(true);
+    setPendingScrollTarget("choices");
   }
 
   function toggleChoice(date: string, group: Group, choiceId: string) {
     if (isLocked) return;
 
     setSelections((prev) => {
-      const existingDay = prev[date] ?? {
-        menuId: selectedMenuId,
-        mealOptionId: null,
-        itemsByChoiceId: {},
-      };
+      const existingDay = prev[date] ?? { mealOptionId: null, itemsByChoiceId: {} };
       const day = clone(existingDay);
       const selectedIds = getSelectedChoiceIdsForGroup(group, day);
       const isSelected = !!day.itemsByChoiceId[choiceId];
@@ -522,7 +613,7 @@ export default function ParentOrdersPage() {
         day.itemsByChoiceId[choiceId] = { selectedIngredients: [] };
       }
 
-      return { ...prev, [date]: normalizeDaySelection(day) };
+      return { ...prev, [date]: day };
     });
 
     setDirty(true);
@@ -532,11 +623,7 @@ export default function ParentOrdersPage() {
     if (isLocked) return;
 
     setSelections((prev) => {
-      const existingDay = prev[date] ?? {
-        menuId: selectedMenuId,
-        mealOptionId: null,
-        itemsByChoiceId: {},
-      };
+      const existingDay = prev[date] ?? { mealOptionId: null, itemsByChoiceId: {} };
       const day = clone(existingDay);
       const existing = day.itemsByChoiceId[choiceId] ?? { selectedIngredients: [] };
       const has = existing.selectedIngredients.includes(extra);
@@ -547,7 +634,7 @@ export default function ParentOrdersPage() {
           : Array.from(new Set([...existing.selectedIngredients, extra])),
       };
 
-      return { ...prev, [date]: normalizeDaySelection(day) };
+      return { ...prev, [date]: day };
     });
 
     setDirty(true);
@@ -568,7 +655,6 @@ export default function ParentOrdersPage() {
         const day = selections[date];
         return {
           date,
-          menuId: day.menuId,
           mealOptionId: day.mealOptionId!,
           items: Object.entries(day.itemsByChoiceId).map(([choiceId, cfg]) => ({
             choiceId,
@@ -583,6 +669,7 @@ export default function ParentOrdersPage() {
         body: JSON.stringify({
           pupilId: selectedPupil,
           weekStart: config.weekStart,
+          menuId: selectedMenuId,
           orders,
           updateDefaultPattern: true,
         }),
@@ -594,8 +681,57 @@ export default function ParentOrdersPage() {
         return;
       }
 
+      const refreshUrl = `/api/parents/ordering-config?pupilId=${encodeURIComponent(
+        selectedPupil
+      )}&weekStart=${encodeURIComponent(config.weekStart)}&menuId=${encodeURIComponent(
+        selectedMenuId
+      )}`;
+
+      const refreshed = await fetchJSON<OrderingConfig | null>(refreshUrl, null);
+
+      if (refreshed) {
+        setConfig(refreshed);
+        setMealOptionsByDate(refreshed.mealOptionsByDate);
+
+        setMealOrderByDate((prev) => {
+          const next: Record<string, string[]> = { ...prev };
+
+          for (const date of refreshed.weekDates) {
+            const meals = refreshed.mealOptionsByDate[date] ?? [];
+            const existingOrder = prev[date] ?? [];
+            const existingSet = new Set(existingOrder);
+
+            const kept = existingOrder.filter((id) => meals.some((m) => m.id === id));
+            const missing = meals.filter((m) => !existingSet.has(m.id)).map((m) => m.id);
+
+            next[date] = kept.length || missing.length ? [...kept, ...missing] : meals.map((m) => m.id);
+          }
+
+          return next;
+        });
+
+        const nextSelections: Record<string, DaySelection> = {};
+        for (const date of refreshed.weekDates) {
+          nextSelections[date] = sanitizeSelectionForDate(
+            buildSelectionFromEffectiveOrder(refreshed.effectiveOrders[date] ?? null),
+            refreshed.mealOptionsByDate[date] ?? []
+          );
+        }
+setSelections(nextSelections);
+setInitialSelections(clone(nextSelections));
+setDirty(false);
+setActiveDate(
+  pickNextIncompleteDate(
+    refreshed.orderable,
+    nextSelections,
+    refreshed.mealOptionsByDate
+  )
+);
+      } else {
+        setDirty(false);
+      }
+
       toast.success("Week saved");
-      setDirty(false);
     } catch (e: any) {
       toast.error(e?.message || "Failed to save");
     } finally {
@@ -604,133 +740,213 @@ export default function ParentOrdersPage() {
   }
 
   function goToNextDay() {
-    if (!nextOrderableDate) return;
+    if (!nextOrderableDate || !activeDate) return;
+
+    setMealOrderByDate((prev) => {
+      const sourceOrder =
+        prev[activeDate] ?? (mealOptionsByDate[activeDate] ?? []).map((m) => m.id);
+
+      const nextMeals = mealOptionsByDate[nextOrderableDate] ?? [];
+      const nextMealIds = new Set(nextMeals.map((m) => m.id));
+
+      const kept = sourceOrder.filter((id) => nextMealIds.has(id));
+      const missing = nextMeals.map((m) => m.id).filter((id) => !kept.includes(id));
+
+      return {
+        ...prev,
+        [nextOrderableDate]: [...kept, ...missing],
+      };
+    });
+
     setActiveDate(nextOrderableDate);
+    setPendingScrollTarget("meals");
   }
 
   const canGoPrev = !isBefore(addWeeks(weekStart, -1), minWeekStart);
 
   return (
-    <div className="w-full min-w-0 max-w-full space-y-4 pb-28 md:pb-24">
+    <div className="space-y-4 pb-32 md:pb-24">
       <DashboardHeader heading="Lunch Orders" text="Pick the whole week in one go." />
 
-      <div className="sticky top-0 z-20 bg-background/95 py-3 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+      <div
+        ref={topStickyRef}
+        className="sticky top-0 z-30 py-3"
+        style={{ backgroundColor: "var(--background-color)" }}
+      >
         <div className="flex flex-col gap-3">
-          <div className="flex flex-col gap-3">
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-              <div className="flex flex-col gap-3">
-                <select
-                  className="w-full min-w-0 rounded-xl border bg-white px-3 py-3 text-sm"
-                  value={selectedPupil}
-                  onChange={(e) => setSelectedPupil(e.target.value)}
-                  disabled={loadingWeek || saving}
-                >
-                  {pupils.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name}
-                    </option>
-                  ))}
-                </select>
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div className="flex flex-col gap-3">
+              <select
+                className="min-w-[220px] rounded-xl border bg-white px-3 py-3"
+                value={selectedPupil}
+                onChange={(e) => setSelectedPupil(e.target.value)}
+                disabled={loadingWeek || saving}
+              >
+                {pupils.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+            </div>
 
-                <div className="grid grid-cols-3 gap-2 sm:flex sm:flex-wrap sm:items-center">
-                  <Button
-                    variant="outline"
-                    disabled={!canGoPrev || dirty}
-                    onClick={() => setWeekStart(addWeeks(weekStart, -1))}
-                    className="w-full"
-                  >
-                    ← Previous
-                  </Button>
-
-                  <div className="col-span-1 flex items-center justify-center rounded-xl border bg-white px-2 py-3 text-center text-xs font-medium sm:min-w-[180px] sm:px-3 sm:text-sm">
-                    {format(weekStart, "MMM d")} – {format(weekEndFriday, "MMM d")}
-                  </div>
-
-                  <Button
-                    variant="outline"
-                    disabled={dirty}
-                    onClick={() => setWeekStart(addWeeks(weekStart, 1))}
-                    className="w-full"
-                  >
-                    Next →
-                  </Button>
-                </div>
+            <div className="flex items-center justify-between gap-3">
+              <div className="text-sm text-muted-foreground">
+                Progress: {progress.done}/{progress.total}
               </div>
-
-              <div className="flex items-center justify-between gap-3">
-                <div className="text-sm text-muted-foreground">
-                  Progress: {progress.done}/{progress.total}
-                </div>
-                <Button
-                  disabled={!dirty || !weekComplete || saving || isLocked}
-                  onClick={handleSave}
-                >
-                  {saving ? "Saving…" : "Save week"}
-                </Button>
-              </div>
+              <Button
+                className="bg-sky-600 text-white hover:bg-sky-700"
+                disabled={!dirty || !weekComplete || saving || isLocked}
+                onClick={handleSave}
+              >
+                {saving ? "Saving…" : "Save week"}
+              </Button>
             </div>
           </div>
         </div>
       </div>
 
-      {dirty && !isLocked && (
-        <div className="sticky top-[72px] z-30">
-          <div className="mx-1 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 shadow-sm">
-            You have unsaved changes.
+      <div
+        ref={subStickyRef}
+        className="sticky z-20 pb-2"
+        style={{
+          top: subStickyTop,
+          backgroundColor: "var(--background-color)",
+        }}
+      >
+        <div className="space-y-2">
+          {dirty && !isLocked && (
+            <div className="rounded-xl bg-amber-100 px-3 py-2 text-sm text-amber-900 shadow-sm">
+              You have unsaved changes.
+            </div>
+          )}
+
+          <div className="w-full">
+            <div className="grid grid-cols-5 gap-2">
+              <Button
+                disabled={!canGoPrev || dirty}
+                onClick={() => setWeekStart(addWeeks(weekStart, -1))}
+                className="h-[52px] rounded-xl bg-sky-600 text-white hover:bg-sky-700"
+              >
+                ← Previous
+              </Button>
+
+              <div className="col-span-3 flex h-[52px] items-center justify-center whitespace-nowrap rounded-xl border px-3 text-center text-sm font-medium bg-white">
+                {format(weekStart, "MMM d")} – {format(weekEndFriday, "MMM d")}
+              </div>
+
+              <Button
+                disabled={dirty}
+                onClick={() => setWeekStart(addWeeks(weekStart, 1))}
+                className="h-[52px] rounded-xl bg-sky-600 text-white hover:bg-sky-700"
+              >
+                Next →
+              </Button>
+            </div>
           </div>
+
+  {!loadingWeek && config && (
+  <div className="overflow-x-auto sm:overflow-visible">
+    <div className="grid grid-cols-5 gap-2">
+      {config.weekDates.map((date, i) => {
+        const isOrderable = config.orderable.includes(date);
+        const active = activeDate === date;
+
+        const effectiveOrder = config.effectiveOrders[date] ?? null;
+        const source = effectiveOrder?.source ?? null;
+
+        const emptyDay: DaySelection = { mealOptionId: null, itemsByChoiceId: {} };
+
+        const currentSelection = selections[date] ?? emptyDay;
+        const initialSelection = initialSelections[date] ?? emptyDay;
+
+        const hasLocalEdits =
+          JSON.stringify(currentSelection) !== JSON.stringify(initialSelection);
+const isCustomEditedDay =
+  isOrderable && (source === "explicit" || hasLocalEdits);
+
+const isRolloverDay =
+  isOrderable &&
+  !hasLocalEdits &&
+  (source === "rollover" || source === "pattern");
+
+const isUneditedDay =
+  isOrderable &&
+  !hasLocalEdits &&
+  !effectiveOrder;
+const cardClasses = active
+  ? "border border-sky-700 bg-sky-600 text-white"
+  : !isOrderable
+    ? "bg-red-100/80 text-red-800"
+    : isCustomEditedDay
+      ? "bg-emerald-100 text-emerald-800"
+      : isRolloverDay
+        ? "bg-indigo-100 text-indigo-800"
+        : "border border-slate-200 bg-white text-slate-700";
+
+const labelClasses = active
+  ? "text-sky-50"
+  : !isOrderable
+    ? "text-red-700"
+    : isCustomEditedDay
+      ? "text-emerald-700"
+      : isRolloverDay
+        ? "text-indigo-700"
+        : "text-slate-500";
+        return (
+          <button
+            key={date}
+            id={`day-${date}`}
+            type="button"
+            onClick={() => setActiveDate(date)}
+            className={[
+              "min-w-0 rounded-xl px-2 py-2 text-left shadow-sm transition-all",
+              "sm:rounded-2xl sm:px-3 sm:py-3",
+              cardClasses,
+            ].join(" ")}
+          >
+            <div
+              className={[
+                "text-[10px] leading-none sm:text-xs",
+                labelClasses,
+              ].join(" ")}
+            >
+              {weekdayLabels[i]}
+            </div>
+
+            <div className="mt-1 text-sm font-semibold leading-none sm:text-base">
+              {format(parseISO(date), "d")}
+            </div>
+          </button>
+        );
+      })}
+    </div>
+  </div>
+)}
+          {!loadingWeek && holidayLabel && (
+            <div className="rounded-xl bg-red-100 px-2.5 py-2 text-xs font-medium text-red-900 shadow-sm sm:px-3 sm:text-sm">
+              {holidayLabel}
+            </div>
+          )}
         </div>
-      )}
+      </div>
 
       {loadingWeek && <Card className="p-6">Loading…</Card>}
 
-      {!loadingWeek && config && (
-        <>
-          <Card className="min-w-0 p-2 sm:p-3">
-            <div className="flex gap-2 overflow-x-auto pb-1 snap-x">
-              {config.weekDates.map((date, i) => {
-                const isOrderable = config.orderable.includes(date);
-                const active = activeDate === date;
-                const complete = isOrderable
-                  ? isDayComplete(selections[date], getMealOptionsForDay(date, selections[date]))
-                  : false;
-                const label = isOrderable ? (complete ? "Complete" : "Incomplete") : "No ordering";
-
-                return (
-                  <button
-                    key={date}
-                    id={`day-${date}`}
-                    type="button"
-                    disabled={!isOrderable}
-                    onClick={() => setActiveDate(date)}
-                    className={[
-                      "min-w-[86px] snap-start rounded-2xl border px-2 py-3 text-left text-sm transition sm:min-w-[116px] sm:px-3",
-                      active ? "ring-2 ring-primary border-primary" : "",
-                      !isOrderable ? "cursor-not-allowed border-slate-200 bg-slate-50 opacity-50" : "",
-                      complete ? "border-green-200 bg-green-50 text-green-900" : "",
-                      isOrderable && !complete ? "border-slate-200 bg-white hover:bg-muted/30" : "",
-                    ].join(" ")}
-                  >
-                    <div className="text-[11px] text-muted-foreground sm:text-xs">{weekdayLabels[i]}</div>
-                    <div className="font-semibold">{format(parseISO(date), "MMM d")}</div>
-                    <div className="mt-1 text-[11px] sm:text-xs">{label}</div>
-                  </button>
-                );
-              })}
-            </div>
-          </Card>
-
-          {activeDate && config.orderable.includes(activeDate) && activeSelection && (
-            <div className="grid gap-4 lg:grid-cols-[1.15fr_0.85fr]">
-              <div className="min-w-0 space-y-4">
-                <Card className="p-4 sm:p-5">
-                  <div className="mb-4 flex flex-col gap-3">
-                    <div className="flex flex-col gap-2">
-                      <h2 className="text-lg font-semibold sm:text-xl">
+      {!loadingWeek && config && activeDate && config.orderable.includes(activeDate) && activeSelection && (
+        <div className="grid gap-4 lg:grid-cols-[1.15fr_0.85fr]">
+          <div className="space-y-4">
+            <div ref={mealOptionsRef}>
+              <Card className="p-4 sm:p-5">
+                <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+                      <h2 className="text-xl font-semibold">
                         {format(parseISO(activeDate), "EEEE, MMM d")}
                       </h2>
 
                       <select
-                        className="w-full min-w-0 rounded-xl border bg-white px-3 py-3 text-sm"
+                        className="min-w-[220px] rounded-xl border bg-white px-3 py-2 text-sm"
                         value={selectedMenuId}
                         onChange={(e) => handleMenuChange(e.target.value)}
                         disabled={loadingMenu || loadingWeek || saving || isLocked}
@@ -741,279 +957,353 @@ export default function ParentOrdersPage() {
                           </option>
                         ))}
                       </select>
-
-                      <p className="text-sm text-muted-foreground">
-                        Changing menu only filters the options shown below. It does not remove meals already chosen on other menus.
-                      </p>
                     </div>
-                  </div>
 
-                  {loadingMenu && !mealOptionsByMenu[selectedMenuId]?.[activeDate] ? (
-                    <Card className="p-6">Loading menu options…</Card>
-                  ) : (
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                      {activeMealOptions.map((meal) => {
-                        const selected =
-                          activeSelection.mealOptionId === meal.id &&
-                          activeSelection.menuId === selectedMenuId;
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      Changing menu only updates the options shown below.
+                    </p>
+                  </div>
+                </div>
+
+                {loadingMenu ? (
+                  <Card className="p-6">Loading menu options…</Card>
+                ) : (
+                  <AnimatePresence mode="popLayout">
+                    <motion.div
+                      layout
+                      className="mx-auto flex flex-col gap-3"
+                      animate={{
+                        maxWidth: activeSelection?.mealOptionId ? 760 : 1120,
+                      }}
+                      transition={{ type: "spring", stiffness: 260, damping: 30 }}
+                    >
+                      {orderedActiveMealOptions.map((meal) => {
+                        const selected = activeSelection.mealOptionId === meal.id;
+                        const chosenNames = getChosenChoiceNamesForMeal(meal, activeSelection);
+                        const hasChosenNames = chosenNames.length > 0;
 
                         return (
-                          <div
+                          <motion.div
                             key={meal.id}
+                            layout
+                            transition={{
+                              layout: { type: "spring", stiffness: 360, damping: 32 },
+                            }}
                             className={[
-                              "overflow-hidden rounded-2xl border transition",
-                              selected
-                                ? "ring-2 ring-primary border-primary bg-primary/5"
-                                : "bg-white",
+                              "overflow-hidden border bg-white",
+                             selected
+  ? "rounded-xl border-sky-300 bg-sky-50 ring-2 ring-sky-100"
+                                : activeSelection?.mealOptionId
+                                  ? "rounded-lg border-slate-200"
+                                  : "rounded-2xl border-slate-200",
                             ].join(" ")}
                           >
                             <button
                               type="button"
                               onClick={() => !isLocked && setMealOption(activeDate, meal.id)}
                               disabled={isLocked}
-                              className="w-full text-left"
+                              className="flex w-full items-stretch gap-3 p-3 text-left"
                             >
-                              <div className="relative h-36 bg-muted sm:h-40">
+                              <motion.div
+                                layout
+                                className={[
+                                  "relative shrink-0 overflow-hidden bg-muted",
+                                  activeSelection?.mealOptionId ? "h-20 w-20 rounded-lg" : "h-24 w-24 rounded-xl",
+                                ].join(" ")}
+                              >
                                 {meal.imageUrl ? (
                                   <Image
                                     src={meal.imageUrl}
                                     alt={meal.name}
                                     fill
                                     className="object-cover"
-                                    sizes="(max-width: 640px) 100vw, 400px"
+                                    sizes="96px"
                                   />
                                 ) : null}
-                              </div>
+                              </motion.div>
 
-                              <div className="p-4">
-                                <div className="text-base font-semibold sm:text-lg">{meal.name}</div>
-                                <div className="mt-1 text-sm text-muted-foreground">
-                                  {meal.groups.length} optional{meal.groups.length === 1 ? "" : "s"}
-                                </div>
-                              </div>
-                            </button>
-
-                            <div className="flex items-start justify-between gap-3 px-4 pb-4">
-                              <div className="min-w-0 flex-1 flex flex-wrap gap-1">
-                                {meal.allergens.map((a) => (
-                                  <span
-                                    key={a.id}
-                                    className={`rounded-full border px-2 py-0.5 text-[11px] ${getAllergenColorClass(
-                                      a.name
-                                    )}`}
-                                  >
-                                    {a.name}
-                                  </span>
-                                ))}
-                              </div>
-
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                className="shrink-0"
-                                onClick={() => setMealInfo(meal)}
-                              >
-                                <Info className="h-4 w-4" />
-                              </Button>
-                            </div>
-                          </div>
-                        );
-                      })}
-
-                      {activeMealOptions.length === 0 && (
-                        <Card className="col-span-full p-6 text-sm text-muted-foreground">
-                          No meals are available for this menu on this day.
-                        </Card>
-                      )}
-                    </div>
-                  )}
-                </Card>
-
-                {activeMealOption && (
-                  <div ref={mealGroupsRef}>
-                    <Card className="space-y-5 p-4 sm:p-5">
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <h3 className="text-lg font-semibold">{activeMealOption.name}</h3>
-                          <p className="text-sm text-muted-foreground">
-                            Review each section below.
-                          </p>
-                        </div>
-                      </div>
-
-                      {activeMealOption.groups.map((group) => {
-                        const selectedIds = getSelectedChoiceIdsForGroup(group, activeSelection);
-
-                        return (
-                          <section key={group.id} className="space-y-4 rounded-2xl border p-4">
-                            <div className="flex items-center justify-between gap-3">
-                              <div>
-                                <div className="font-semibold">{group.name}</div>
-                                <div className="text-sm text-muted-foreground">
-                                  Choose up to {group.maxSelections}
-                                </div>
-                              </div>
-
-                              <div className="text-sm font-medium">
-                                {selectedIds.length}/{group.maxSelections}
-                              </div>
-                            </div>
-
-                            <div className="space-y-3">
-                              {group.choices.map((choice) => {
-                                const checked = selectedIds.includes(choice.id);
-                                const extras =
-                                  activeSelection.itemsByChoiceId[choice.id]?.selectedIngredients ?? [];
-
-                                return (
-                                  <div
-                                    key={choice.id}
-                                    className={[
-                                      "rounded-2xl border p-4",
-                                      checked ? "border-primary bg-primary/5" : "bg-white",
-                                    ].join(" ")}
-                                  >
-                                    <div className="flex items-start justify-between gap-3">
-                                      <button
-                                        type="button"
-                                        onClick={() => !isLocked && toggleChoice(activeDate, group, choice.id)}
-                                        disabled={isLocked}
-                                        className="flex-1 text-left"
-                                      >
-                                        <div className="font-medium">{choice.name}</div>
-                                        <div className="mt-1 text-xs text-muted-foreground">
-                                          {checked ? "Selected" : "Tap to select"}
-                                        </div>
-                                      </button>
-
-                                      <Button
-                                        type="button"
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={() => setChoiceInfo(choice)}
-                                      >
-                                        <Info className="h-4 w-4" />
-                                      </Button>
+                              <motion.div layout className="min-w-0 flex-1 py-1 pr-1">
+                                <div className="flex items-start justify-between gap-3">
+                                  <div className="min-w-0">
+                                    <div
+                                      className={
+                                        activeSelection?.mealOptionId
+                                          ? "text-base font-semibold"
+                                          : "text-lg font-semibold"
+                                      }
+                                    >
+                                      {meal.name}
                                     </div>
 
-                                    {checked && choice.ingredients.length > 0 && (
-                                      <div className="mt-4 space-y-2">
-                                        <div className="text-sm font-medium">Extras</div>
-                                        <div className="flex flex-wrap gap-2">
-                                          {choice.ingredients.map((extra) => {
-                                            const active = extras.includes(extra);
+                                    {!hasChosenNames && (
+                                      <div className="mt-1 text-sm text-muted-foreground">
+                                        {meal.groups.length} option{meal.groups.length === 1 ? "" : "s"}
+                                      </div>
+                                    )}
 
-                                            return (
-                                              <Button
-                                                key={extra}
-                                                type="button"
-                                                size="sm"
-                                                variant={active ? "default" : "outline"}
-                                                disabled={isLocked}
-                                                onClick={() =>
-                                                  !isLocked && toggleExtra(activeDate, choice.id, extra)
-                                                }
-                                              >
-                                                {extra}
-                                              </Button>
-                                            );
-                                          })}
-                                        </div>
+                                    {hasChosenNames && (
+                                      <div className="mt-2 flex flex-wrap gap-1.5">
+                                        {chosenNames.map((name) => (
+                                          <span
+                                            key={`${meal.id}-${name}`}
+className={[
+  "rounded-full border px-2 py-0.5 text-[11px]",
+  selected
+    ? "border-sky-200 bg-sky-100 text-sky-900"
+    : "border-slate-200 bg-slate-100 text-slate-700",
+].join(" ")}
+                                          >
+                                            {name}
+                                          </span>
+                                        ))}
+                                      </div>
+                                    )}
+
+                                    {!hasChosenNames && meal.allergens.length > 0 && (
+                                      <div className="mt-2 flex flex-wrap gap-1">
+                                        {meal.allergens.slice(0, 4).map((a) => (
+                                          <span
+                                            key={a.id}
+                                            className={`rounded-full border px-2 py-px text-[10px] ${getAllergenColorClass(
+                                              a.name
+                                            )}`}
+                                          >
+                                            {a.name}
+                                          </span>
+                                        ))}
                                       </div>
                                     )}
                                   </div>
-                                );
-                              })}
-                            </div>
-                          </section>
+
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    className="shrink-0"
+                                    onClick={(e) => {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                      setMealInfo(meal);
+                                    }}
+                                  >
+                                    <Info className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                              </motion.div>
+                            </button>
+                          </motion.div>
                         );
                       })}
-
-                      <div className="flex gap-2 pt-4">
-                        {isLastOrderableDay ? (
-                          <Button
-                            className="flex-1"
-                            disabled={!dirty || !weekComplete || saving || isLocked}
-                            onClick={handleSave}
-                          >
-                            {saving ? "Saving…" : "Save week"}
-                          </Button>
-                        ) : (
-                          <Button
-                            className="flex-1"
-                            disabled={!nextOrderableDate}
-                            onClick={goToNextDay}
-                          >
-                            {nextOrderableDate
-                              ? `Next day (${format(parseISO(nextOrderableDate), "EEE")})`
-                              : "Last day"}
-                          </Button>
-                        )}
-                      </div>
-                    </Card>
-                  </div>
+                    </motion.div>
+                  </AnimatePresence>
                 )}
-              </div>
+              </Card>
+            </div>
 
-              <div className="min-w-0 space-y-4">
-                <Card className="p-4 sm:p-5">
-                  <div className="text-lg font-semibold">
-                    {possessive(config.pupil.name)} Week Summary
+            {activeMealOption && (
+              <div ref={choicesSectionRef}>
+                <Card className="space-y-5 p-4 sm:p-5">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <h3 className="text-lg font-semibold">{activeMealOption.name}</h3>
+                      <p className="text-sm text-muted-foreground">
+                        Review each section below.
+                      </p>
+                    </div>
                   </div>
 
-                  <div className="mt-4 space-y-3">
-                    {config.orderable.map((date) => {
-                      const day = selections[date];
-                      const options = getMealOptionsForDay(date, day);
-                      const meal = day?.mealOptionId
-                        ? options.find((m) => m.id === day.mealOptionId) ?? null
-                        : null;
-                      const chosen = getChosenChoiceNames(day, meal);
-                      const complete = isDayComplete(day, options);
+                  {activeMealOption.groups.map((group) => {
+                    const selectedIds = getSelectedChoiceIdsForGroup(group, activeSelection);
 
-                      return (
-                        <button
-                          key={date}
-                          type="button"
-                          onClick={() => setActiveDate(date)}
-                          className={[
-                            "w-full rounded-xl border p-3 text-left transition hover:bg-muted/20",
-                            complete ? "border-green-200 bg-green-50/60" : "border-slate-200 bg-white",
-                          ].join(" ")}
-                        >
-                          <div className="flex items-center justify-between gap-3">
-                            <div className="font-medium">
-                              {format(parseISO(date), "EEE, MMM d")}
+                    return (
+                      <section key={group.id} className="space-y-4 rounded-2xl border p-4">
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <div className="font-semibold">{group.name}</div>
+                            <div className="text-sm text-muted-foreground">
+                              Choose up to {group.maxSelections}
                             </div>
-                            <div className="text-xs">{complete ? "Complete" : "Incomplete"}</div>
                           </div>
 
-                          <div className="mt-1 text-sm text-muted-foreground">
-                            {meal ? meal.name : "No meal selected"}
+                          <div className="text-sm font-medium">
+                            {selectedIds.length}/{group.maxSelections}
                           </div>
+                        </div>
 
-                          {chosen.length > 0 && (
-                            <div className="mt-2 flex flex-wrap gap-1.5">
-                              {chosen.map((name) => (
-                                <span
-                                  key={`${date}-${name}`}
-                                  className="rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-[11px] text-slate-700"
-                                >
-                                  {name}
-                                </span>
-                              ))}
-                            </div>
-                          )}
-                        </button>
-                      );
-                    })}
+                        <div className="space-y-3">
+                          {group.choices.map((choice) => {
+                            const checked = selectedIds.includes(choice.id);
+                            const extras =
+                              activeSelection.itemsByChoiceId[choice.id]?.selectedIngredients ?? [];
+
+                            return (
+                              <div
+                                key={choice.id}
+                                className={[
+                                  "rounded-2xl border p-4",
+checked ? "border-indigo-300 bg-indigo-50" : "bg-white",
+                                ].join(" ")}
+                              >
+                                <div onClick={() => !isLocked && toggleChoice(activeDate, group, choice.id)} className="flex items-start justify-between gap-3">
+                                  <button
+                                    type="button"
+                                    
+                                    disabled={isLocked}
+                                    className="flex-1 text-left"
+                                  >
+                                    <div className="font-medium">{choice.name}</div>
+                                  </button>
+
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => setChoiceInfo(choice)}
+                                  >
+                                    <Info className="h-4 w-4" />
+                                  </Button>
+                                </div>
+
+                                {checked && choice.ingredients.length > 0 && (
+                                  <div className="mt-4 space-y-2">
+                                    <div className="text-sm font-medium">Extras</div>
+                                    <div className="flex flex-wrap gap-2">
+                                      {choice.ingredients.map((extra) => {
+                                        const active = extras.includes(extra);
+
+                                        return (
+                                          <Button
+                                            key={extra}
+                                            type="button"
+                                            size="sm"
+                                            variant={active ? "default" : "outline"}
+                                            className={
+                                              active
+                                                ? "bg-indigo-600 text-white hover:bg-indigo-700"
+                                                : ""
+                                            }
+                                            disabled={isLocked}
+                                            onClick={() =>
+                                              !isLocked && toggleExtra(activeDate, choice.id, extra)
+                                            }
+                                          >
+                                            {extra}
+                                          </Button>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </section>
+                    );
+                  })}
+
+                  <div className="flex gap-2 pt-4">
+                    {isLastOrderableDay ? (
+                      <Button
+                        className="flex-1 bg-sky-600 text-white hover:bg-sky-700"
+                        disabled={!dirty || !weekComplete || saving || isLocked}
+                        onClick={handleSave}
+                      >
+                        {saving ? "Saving…" : "Save week"}
+                      </Button>
+                    ) : (
+                      <Button
+className="flex-1 bg-indigo-600 text-white hover:bg-indigo-700"
+                        disabled={!nextOrderableDate}
+                        onClick={goToNextDay}
+                      >
+                        {nextOrderableDate
+                          ? `Next day (${format(parseISO(nextOrderableDate), "EEE")})`
+                          : "Last day"}
+                      </Button>
+                    )}
                   </div>
                 </Card>
               </div>
-            </div>
-          )}
-        </>
+            )}
+          </div>
+
+          <div className="space-y-4">
+            <Card className="p-5 bg-transparent shadow-none border-none">
+              <div className="text-lg font-semibold">
+                {possessive(config.pupil.name)} Week Summary
+              </div>
+
+              <div className="mt-4 space-y-3">
+                {config.orderable.map((date) => {
+                  const day = selections[date];
+                  const options = mealOptionsByDate[date] ?? [];
+                  const meal = day?.mealOptionId
+                    ? options.find((m) => m.id === day.mealOptionId) ?? null
+                    : null;
+                  const chosen = getChosenChoiceNames(day, meal);
+                  const complete = isDayComplete(day, options);
+
+                  return (
+                    <button
+                      key={date}
+                      type="button"
+                      onClick={() => setActiveDate(date)}
+className={[
+  "w-full rounded-xl border p-3 text-left transition",
+  "bg-slate-50/70 hover:bg-slate-100/80",
+complete
+  ? "border-emerald-300 bg-slate-50/70"
+  : "border-slate-200 bg-slate-50/40",
+].join(" ")}
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="font-medium">
+                          {format(parseISO(date), "EEE, MMM d")}
+                        </div>
+<div className="flex items-center">
+  {complete ? (
+    <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500 text-[11px] font-semibold text-white">
+      ✓
+    </span>
+  ) : (
+<span className="inline-flex h-5 w-5 rounded-full border border-slate-300 bg-slate-50" />  )}
+</div>                      </div>
+
+<div className="mt-1 flex items-center gap-2 text-sm text-muted-foreground">
+  {meal?.imageUrl ? (
+    <div className="relative h-5 w-5 shrink-0 overflow-hidden rounded-md bg-muted">
+      <Image
+        src={meal.imageUrl}
+        alt={meal.name}
+        fill
+        className="object-cover"
+        sizes="20px"
+      />
+    </div>
+  ) : null}
+  <span className="truncate">{meal ? meal.name : "No meal selected"}</span>
+</div>
+
+                      {chosen.length > 0 && (
+<div className="mt-2 flex flex-wrap gap-1.5">
+  {chosen.map((name) => (
+    <span
+      key={`${date}-${name}`}
+      className="rounded-full border border-sky-200 bg-sky-100 px-2 py-0.5 text-[11px] text-sky-900"
+    >
+      {name}
+    </span>
+  ))}
+</div>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </Card>
+          </div>
+        </div>
       )}
 
       <Dialog open={!!mealInfo} onOpenChange={(open) => !open && setMealInfo(null)}>

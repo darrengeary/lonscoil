@@ -2,10 +2,11 @@ import { prisma } from "@/lib/db";
 import MenuManager, {
   type AllergenTag,
   type MenuSection,
+  type SchoolTag,
 } from "@/components/supplier/MenuManager";
 
 export default async function AdminPage() {
-  const [menusRaw, allergens] = await Promise.all([
+  const [menusRaw, allergens, schools] = await Promise.all([
     prisma.menu.findMany({
       orderBy: { name: "asc" },
       include: {
@@ -73,6 +74,13 @@ export default async function AdminPage() {
         name: true,
       },
     }),
+    prisma.school.findMany({
+      orderBy: { name: "asc" },
+      select: {
+        id: true,
+        name: true,
+      },
+    }),
   ]);
 
   const initialSections: MenuSection[] = menusRaw.map((menu) => ({
@@ -91,8 +99,12 @@ export default async function AdminPage() {
       menuId: mealOption.menuId,
       active: mealOption.active,
       imageUrl: mealOption.imageUrl,
-      availStart: mealOption.availStart ? new Date(mealOption.availStart).toISOString() : null,
-      availEnd: mealOption.availEnd ? new Date(mealOption.availEnd).toISOString() : null,
+      availStart: mealOption.availStart
+        ? new Date(mealOption.availStart).toISOString()
+        : null,
+      availEnd: mealOption.availEnd
+        ? new Date(mealOption.availEnd).toISOString()
+        : null,
       caloriesKcal: mealOption.caloriesKcal ?? null,
       proteinG: mealOption.proteinG ?? null,
       carbsG: mealOption.carbsG ?? null,
@@ -146,10 +158,16 @@ export default async function AdminPage() {
     name: a.name,
   }));
 
+  const allSchools: SchoolTag[] = schools.map((school) => ({
+    id: school.id,
+    name: school.name,
+  }));
+
   return (
     <MenuManager
       initialSections={initialSections}
       allAllergens={allAllergens}
+      allSchools={allSchools}
     />
   );
 }

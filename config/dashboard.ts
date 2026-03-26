@@ -30,6 +30,12 @@ export const sidebarLinks: SidebarNavItem[] = [
         authorizeOnly: UserRole.ADMIN,
       },
       {
+        href: "/admin/absences",
+        icon: "CalendarX",
+        title: "Manage Absences",
+        authorizeOnly: UserRole.ADMIN,
+      },
+      {
         href: "/admin/schedule",
         icon: "CalendarDays",
         title: "School Schedules",

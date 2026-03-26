@@ -3,7 +3,6 @@ import { prisma } from "@/lib/db";
 import { UserRole } from "@prisma/client";
 import {
   addDays,
-  eachDayOfInterval,
   endOfDay,
   format,
   getDay,
@@ -33,11 +32,16 @@ function withinAvailability(date: Date, start?: Date | null, end?: Date | null) 
 }
 
 function expandWeekdaysInclusive(start: Date, end: Date): string[] {
-  const days = eachDayOfInterval({
-    start: startOfDay(start),
-    end: endOfDay(end),
-  });
-  return days.filter((d) => !isWeekend(d)).map((d) => format(d, DATE_FMT));
+  const out: string[] = [];
+  let current = startOfDay(start);
+  const last = endOfDay(end);
+
+  while (current <= last) {
+    if (!isWeekend(current)) out.push(format(current, DATE_FMT));
+    current = addDays(current, 1);
+  }
+
+  return out;
 }
 
 function getWeekDates(weekStart: Date) {
@@ -48,64 +52,45 @@ function getPreviousThursdayCutoffForWeek(weekStart: Date) {
   return endOfDay(addDays(weekStart, -4));
 }
 
-type EffectiveOrder = {
-  mealOptionId: string;
-  items: {
-    choiceId: string;
-    selectedIngredients: string[];
+type SavePayload = {
+  pupilId: string;
+  weekStart: string;
+  menuId: string;
+  orders: {
+    date: string;
+    mealOptionId: string;
+    items: {
+      choiceId: string;
+      selectedIngredients: string[];
+    }[];
   }[];
-  source: "explicit" | "rollover" | "pattern";
-} | null;
+  updateDefaultPattern?: boolean;
+};
 
 type CleanChoice = {
   id: string;
-  name: string;
-  imageUrl?: string | null;
   ingredients: string[];
-  extraSticker: boolean;
-  caloriesKcal?: number | null;
-  proteinG?: number | null;
-  carbsG?: number | null;
-  sugarsG?: number | null;
-  fatG?: number | null;
-  saturatesG?: number | null;
-  fibreG?: number | null;
-  saltG?: number | null;
-  allergens: { id: string; name: string }[];
 };
 
 type CleanGroup = {
   id: string;
-  name: string;
   maxSelections: number;
   choices: CleanChoice[];
 };
 
 type CleanMealOption = {
   id: string;
-  name: string;
-  imageUrl?: string | null;
-  stickerCount: number;
-  caloriesKcal?: number | null;
-  proteinG?: number | null;
-  carbsG?: number | null;
-  sugarsG?: number | null;
-  fatG?: number | null;
-  saturatesG?: number | null;
-  fibreG?: number | null;
-  saltG?: number | null;
-  allergens: { id: string; name: string }[];
-  groups: CleanGroup[];
   availStart?: Date | null;
   availEnd?: Date | null;
+  groups: CleanGroup[];
 };
 
-function sanitizeEffectiveOrderForMealOption(
-  order: EffectiveOrder,
+function sanitizeItemsForMealOption(
+  items: { choiceId: string; selectedIngredients: string[] }[],
   meal: CleanMealOption | null | undefined,
   date: Date
-): EffectiveOrder {
-  if (!order || !meal) return null;
+) {
+  if (!meal) return null;
   if (!withinAvailability(date, meal.availStart, meal.availEnd)) return null;
 
   const validChoiceIds = new Set(meal.groups.flatMap((g) => g.choices.map((c) => c.id)));
@@ -117,138 +102,63 @@ function sanitizeEffectiveOrderForMealOption(
     }
   }
 
-  const items = order.items
+  const cleanedItems = (items ?? [])
     .filter((i) => validChoiceIds.has(i.choiceId))
     .map((i) => ({
       choiceId: i.choiceId,
-      selectedIngredients: (i.selectedIngredients ?? []).filter((x) =>
-        (validIngredientsByChoiceId.get(i.choiceId) ?? []).includes(x)
-      ),
+      selectedIngredients: Array.from(
+        new Set(
+          (i.selectedIngredients ?? []).filter((x) =>
+            (validIngredientsByChoiceId.get(i.choiceId) ?? []).includes(x)
+          )
+        )
+      ).sort(),
     }));
 
-  const itemChoiceIds = new Set(items.map((i) => i.choiceId));
+  const selectedChoiceIds = new Set(cleanedItems.map((i) => i.choiceId));
 
   const allGroupsValid = meal.groups.every((group) => {
-    const selectedCount = group.choices.filter((c) => itemChoiceIds.has(c.id)).length;
+    const selectedCount = group.choices.filter((c) => selectedChoiceIds.has(c.id)).length;
     return selectedCount <= group.maxSelections;
   });
 
   if (!allGroupsValid) return null;
 
-  return {
-    mealOptionId: order.mealOptionId,
-    items,
-    source: order.source,
-  };
+  return cleanedItems;
 }
 
-function toCleanMealOption(
-  meal: {
-    id: string;
-    name: string;
-    imageUrl: string | null;
-    stickerCount: number;
-    caloriesKcal: number | null;
-    proteinG: number | null;
-    carbsG: number | null;
-    sugarsG: number | null;
-    fatG: number | null;
-    saturatesG: number | null;
-    fibreG: number | null;
-    saltG: number | null;
-    availStart: Date | null;
-    availEnd: Date | null;
-    allergens: { id: string; name: string }[];
-    MealOptionMealGroup: {
-      group: {
-        id: string;
-        name: string;
-        maxSelections: number;
-        active: boolean;
-        choices: {
-          id: string;
-          name: string;
-          imageUrl: string | null;
-          ingredients: string[] | null;
-          extraSticker: boolean;
-          caloriesKcal: number | null;
-          proteinG: number | null;
-          carbsG: number | null;
-          sugarsG: number | null;
-          fatG: number | null;
-          saturatesG: number | null;
-          fibreG: number | null;
-          saltG: number | null;
-          allergens: { id: string; name: string }[];
-        }[];
-      } | null;
-    }[];
-  }
-): CleanMealOption {
-  const groups: CleanGroup[] = meal.MealOptionMealGroup.map((x) => x.group)
-    .filter((group): group is NonNullable<typeof group> => !!group)
-    .filter((group) => group.active)
-    .map((group) => ({
-      id: group.id,
-      name: group.name,
-      maxSelections: group.maxSelections,
-      choices: group.choices.map((choice) => ({
-        id: choice.id,
-        name: choice.name,
-        imageUrl: choice.imageUrl,
-        ingredients: choice.ingredients ?? [],
-        extraSticker: choice.extraSticker,
-        caloriesKcal: choice.caloriesKcal,
-        proteinG: choice.proteinG,
-        carbsG: choice.carbsG,
-        sugarsG: choice.sugarsG,
-        fatG: choice.fatG,
-        saturatesG: choice.saturatesG,
-        fibreG: choice.fibreG,
-        saltG: choice.saltG,
-        allergens: choice.allergens,
-      })),
-    }))
-    .filter((group) => group.choices.length > 0);
-
-  return {
-    id: meal.id,
-    name: meal.name,
-    imageUrl: meal.imageUrl,
-    stickerCount: meal.stickerCount,
-    caloriesKcal: meal.caloriesKcal,
-    proteinG: meal.proteinG,
-    carbsG: meal.carbsG,
-    sugarsG: meal.sugarsG,
-    fatG: meal.fatG,
-    saturatesG: meal.saturatesG,
-    fibreG: meal.fibreG,
-    saltG: meal.saltG,
-    allergens: meal.allergens,
-    groups,
-    availStart: meal.availStart,
-    availEnd: meal.availEnd,
-  };
-}
-
-export const GET = auth(async (req) => {
+export const PUT = auth(async (req) => {
   const user = req.auth?.user;
   if (!user || user.role !== UserRole.USER) {
     return jsonError("Unauthorized", 401);
   }
 
-  const { searchParams } = new URL(req.url);
-  const pupilId = String(searchParams.get("pupilId") || "");
-  const weekStartStr = String(searchParams.get("weekStart") || "");
-  const requestedMenuId = searchParams.get("menuId");
+  let body: SavePayload;
 
-  if (!pupilId || !weekStartStr) {
-    return jsonError("Missing pupilId or weekStart", 400);
+  try {
+    body = (await req.json()) as SavePayload;
+  } catch {
+    return jsonError("Invalid JSON body", 400);
+  }
+
+  const { pupilId, weekStart: weekStartStr, menuId, orders, updateDefaultPattern } = body;
+
+  if (!pupilId || !weekStartStr || !menuId || !Array.isArray(orders)) {
+    return jsonError("Missing required fields", 400);
   }
 
   const weekStart = startOfWeek(parseISO(weekStartStr), { weekStartsOn: 1 });
+  if (Number.isNaN(weekStart.getTime())) {
+    return jsonError("Invalid weekStart", 400);
+  }
+
   const weekDates = getWeekDates(weekStart);
+  const weekDateSet = new Set(weekDates);
+
   const cutoffPassed = new Date() > getPreviousThursdayCutoffForWeek(weekStart);
+  if (cutoffPassed) {
+    return jsonError("Ordering cutoff has passed for this week", 400);
+  }
 
   const pupil = await prisma.pupil.findFirst({
     where: {
@@ -257,22 +167,17 @@ export const GET = auth(async (req) => {
     },
     select: {
       id: true,
-      name: true,
-      menuId: true,
       classroom: {
         select: {
           schoolId: true,
-          school: {
-            select: {
-              name: true,
-            },
-          },
         },
       },
     },
   });
 
-  if (!pupil) return jsonError("Invalid pupil", 401);
+  if (!pupil) {
+    return jsonError("Invalid pupil", 401);
+  }
 
   const availableMenus = await prisma.menu.findMany({
     where: {
@@ -285,246 +190,67 @@ export const GET = auth(async (req) => {
     },
     select: {
       id: true,
-      name: true,
-    },
-    orderBy: {
-      name: "asc",
     },
   });
 
   const validMenuIds = new Set(availableMenus.map((m) => m.id));
-
-  const selectedMenuId =
-    requestedMenuId && validMenuIds.has(requestedMenuId)
-      ? requestedMenuId
-      : pupil.menuId && validMenuIds.has(pupil.menuId)
-        ? pupil.menuId
-        : availableMenus[0]?.id ?? "";
-
-  if (!selectedMenuId) {
-    return Response.json({
-      pupil: {
-        id: pupil.id,
-        name: pupil.name,
-        schoolName: pupil.classroom.school.name,
-      },
-      availableMenus,
-      selectedMenuId: "",
-      selectedMenuName: "",
-      weekStart: format(weekStart, DATE_FMT),
-      weekDates,
-      orderable: [],
-      holidays: [],
-      cutoffPassed,
-      mealOptionsByDate: {},
-      effectiveOrders: {},
-    });
+  if (!validMenuIds.has(menuId)) {
+    return jsonError("Invalid menu for pupil school", 400);
   }
 
-  const [terms, holidays, visibleRawMealOptions, allRawMealOptions, explicitOrders, patternOrders] =
-    await Promise.all([
-      prisma.schedule.findMany({
-        where: {
-          schoolId: pupil.classroom.schoolId,
-          type: "TERM",
-        },
-        select: {
-          startDate: true,
-          endDate: true,
-        },
-      }),
-      prisma.schedule.findMany({
-        where: {
-          schoolId: pupil.classroom.schoolId,
-          type: "HOLIDAY",
-        },
-        select: {
-          startDate: true,
-          endDate: true,
-        },
-      }),
-      prisma.mealOption.findMany({
-        where: {
-          menuId: selectedMenuId,
-          active: true,
-        },
-        select: {
-          id: true,
-          name: true,
-          imageUrl: true,
-          stickerCount: true,
-          caloriesKcal: true,
-          proteinG: true,
-          carbsG: true,
-          sugarsG: true,
-          fatG: true,
-          saturatesG: true,
-          fibreG: true,
-          saltG: true,
-          availStart: true,
-          availEnd: true,
-          allergens: {
-            select: {
-              id: true,
-              name: true,
-            },
-          },
-          MealOptionMealGroup: {
-            select: {
-              group: {
-                select: {
-                  id: true,
-                  name: true,
-                  maxSelections: true,
-                  active: true,
-                  choices: {
-                    where: {
-                      active: true,
-                    },
-                    select: {
-                      id: true,
-                      name: true,
-                      imageUrl: true,
-                      ingredients: true,
-                      extraSticker: true,
-                      caloriesKcal: true,
-                      proteinG: true,
-                      carbsG: true,
-                      sugarsG: true,
-                      fatG: true,
-                      saturatesG: true,
-                      fibreG: true,
-                      saltG: true,
-                      allergens: {
-                        select: {
-                          id: true,
-                          name: true,
-                        },
-                      },
-                    },
-                    orderBy: {
-                      name: "asc",
-                    },
+  const [terms, holidays, rawMealOptions] = await Promise.all([
+    prisma.schedule.findMany({
+      where: {
+        schoolId: pupil.classroom.schoolId,
+        type: "TERM",
+      },
+      select: {
+        startDate: true,
+        endDate: true,
+      },
+    }),
+    prisma.schedule.findMany({
+      where: {
+        schoolId: pupil.classroom.schoolId,
+        type: "HOLIDAY",
+      },
+      select: {
+        startDate: true,
+        endDate: true,
+      },
+    }),
+    prisma.mealOption.findMany({
+      where: {
+        menuId,
+        active: true,
+      },
+      select: {
+        id: true,
+        availStart: true,
+        availEnd: true,
+        MealOptionMealGroup: {
+          select: {
+            group: {
+              select: {
+                id: true,
+                maxSelections: true,
+                active: true,
+                choices: {
+                  where: {
+                    active: true,
+                  },
+                  select: {
+                    id: true,
+                    ingredients: true,
                   },
                 },
               },
             },
           },
         },
-        orderBy: {
-          name: "asc",
-        },
-      }),
-      prisma.mealOption.findMany({
-        where: {
-          menuId: {
-            in: availableMenus.map((m) => m.id),
-          },
-          active: true,
-        },
-        select: {
-          id: true,
-          name: true,
-          imageUrl: true,
-          stickerCount: true,
-          caloriesKcal: true,
-          proteinG: true,
-          carbsG: true,
-          sugarsG: true,
-          fatG: true,
-          saturatesG: true,
-          fibreG: true,
-          saltG: true,
-          availStart: true,
-          availEnd: true,
-          allergens: {
-            select: {
-              id: true,
-              name: true,
-            },
-          },
-          MealOptionMealGroup: {
-            select: {
-              group: {
-                select: {
-                  id: true,
-                  name: true,
-                  maxSelections: true,
-                  active: true,
-                  choices: {
-                    where: {
-                      active: true,
-                    },
-                    select: {
-                      id: true,
-                      name: true,
-                      imageUrl: true,
-                      ingredients: true,
-                      extraSticker: true,
-                      caloriesKcal: true,
-                      proteinG: true,
-                      carbsG: true,
-                      sugarsG: true,
-                      fatG: true,
-                      saturatesG: true,
-                      fibreG: true,
-                      saltG: true,
-                      allergens: {
-                        select: {
-                          id: true,
-                          name: true,
-                        },
-                      },
-                    },
-                    orderBy: {
-                      name: "asc",
-                    },
-                  },
-                },
-              },
-            },
-          },
-        },
-      }),
-      prisma.lunchOrder.findMany({
-        where: {
-          pupilId: pupil.id,
-          date: {
-            gte: startOfDay(weekStart),
-            lte: endOfDay(addDays(weekStart, 4)),
-          },
-        },
-        select: {
-          date: true,
-          mealOptionId: true,
-          items: {
-            select: {
-              choiceId: true,
-              selectedIngredients: true,
-            },
-          },
-        },
-      }),
-      prisma.pupilMealWeekPattern.findMany({
-        where: {
-          pupilId: pupil.id,
-          weekday: {
-            gte: 1,
-            lte: 5,
-          },
-        },
-        select: {
-          weekday: true,
-          mealOptionId: true,
-          items: {
-            select: {
-              choiceId: true,
-              selectedIngredients: true,
-            },
-          },
-        },
-      }),
-    ]);
+      },
+    }),
+  ]);
 
   const termSet = new Set<string>();
   for (const t of terms) {
@@ -542,128 +268,183 @@ export const GET = auth(async (req) => {
     }
   }
 
-  const orderable = weekDates.filter((d) => termSet.has(d) && !holidaySet.has(d));
-  const holidaysInWeek = weekDates.filter((d) => holidaySet.has(d));
+  const orderableDates = weekDates.filter((d) => termSet.has(d) && !holidaySet.has(d));
+  const orderableDateSet = new Set(orderableDates);
 
-  const visibleMealOptionsByDate: Record<string, CleanMealOption[]> = {};
-
-  for (const dateStr of weekDates) {
-    const date = parseISO(dateStr);
-
-    visibleMealOptionsByDate[dateStr] = visibleRawMealOptions
-      .filter((meal) => withinAvailability(date, meal.availStart, meal.availEnd))
-      .map(toCleanMealOption)
-      .filter(
-        (meal) => meal.groups.length > 0 && meal.groups.every((g) => g.choices.length > 0)
-      );
-  }
-
-  const allMealOptionMap = new Map<string, CleanMealOption>(
-    allRawMealOptions
-      .map(toCleanMealOption)
-      .filter(
-        (meal) => meal.groups.length > 0 && meal.groups.every((g) => g.choices.length > 0)
-      )
+  const mealOptionMap = new Map<string, CleanMealOption>(
+    rawMealOptions
+      .map((meal) => ({
+        id: meal.id,
+        availStart: meal.availStart,
+        availEnd: meal.availEnd,
+        groups: meal.MealOptionMealGroup.map((x) => x.group)
+          .filter((group): group is NonNullable<typeof group> => !!group)
+          .filter((group) => group.active)
+          .map((group) => ({
+            id: group.id,
+            maxSelections: group.maxSelections,
+            choices: group.choices.map((choice) => ({
+              id: choice.id,
+              ingredients: choice.ingredients ?? [],
+            })),
+          }))
+          .filter((group) => group.choices.length > 0),
+      }))
+      .filter((meal) => meal.groups.length > 0)
       .map((meal) => [meal.id, meal])
   );
 
-  const explicitByDate = new Map(
-    explicitOrders.map((o) => [
-      format(o.date, DATE_FMT),
-      {
-        mealOptionId: o.mealOptionId,
-        items: o.items.map((i) => ({
-          choiceId: i.choiceId,
-          selectedIngredients: i.selectedIngredients ?? [],
-        })),
-        source: "explicit" as const,
-      },
-    ])
-  );
-
-  const patternByWeekday = new Map(
-    patternOrders.map((p) => [
-      p.weekday,
-      {
-        mealOptionId: p.mealOptionId,
-        items: p.items.map((i) => ({
-          choiceId: i.choiceId,
-          selectedIngredients: i.selectedIngredients ?? [],
-        })),
-        source: "pattern" as const,
-      },
-    ])
-  );
-
-  const effectiveOrders: Record<string, EffectiveOrder> = {};
-  let previousValidOrder: EffectiveOrder = null;
-
-  for (let i = 0; i < weekDates.length; i++) {
-    const dateStr = weekDates[i];
-    const weekday = i + 1;
-    const date = parseISO(dateStr);
-
-    let effective: EffectiveOrder = null;
-
-    const explicit = explicitByDate.get(dateStr) ?? null;
-    const cleanExplicit = sanitizeEffectiveOrderForMealOption(
-      explicit,
-      explicit ? allMealOptionMap.get(explicit.mealOptionId) : null,
-      date
-    );
-
-    if (cleanExplicit) {
-      effective = cleanExplicit;
-    } else {
-      const pattern = patternByWeekday.get(weekday) ?? null;
-      const cleanPattern = sanitizeEffectiveOrderForMealOption(
-        pattern,
-        pattern ? allMealOptionMap.get(pattern.mealOptionId) : null,
-        date
-      );
-
-      if (cleanPattern) {
-        effective = cleanPattern;
-      } else if (previousValidOrder) {
-        const rolloverCandidate: EffectiveOrder = {
-          mealOptionId: previousValidOrder.mealOptionId,
-          items: previousValidOrder.items,
-          source: "rollover",
-        };
-
-        const cleanRollover = sanitizeEffectiveOrderForMealOption(
-          rolloverCandidate,
-          allMealOptionMap.get(rolloverCandidate.mealOptionId),
-          date
-        );
-        if (cleanRollover) {
-          effective = cleanRollover;
-        }
-      }
-    }
-
-    effectiveOrders[dateStr] = effective;
-    if (effective) previousValidOrder = effective;
+  if (orders.length !== orderableDates.length) {
+    return jsonError("Orders must match all orderable days in the selected week", 400);
   }
 
-  const selectedMenuName =
-    availableMenus.find((m) => m.id === selectedMenuId)?.name ?? "";
+  const submittedDates = new Set<string>();
 
-  return Response.json({
-    pupil: {
-      id: pupil.id,
-      name: pupil.name,
-      schoolName: pupil.classroom.school.name,
-    },
-    availableMenus,
-    selectedMenuId,
-    selectedMenuName,
-    weekStart: format(weekStart, DATE_FMT),
-    weekDates,
-    orderable,
-    holidays: holidaysInWeek,
-    cutoffPassed,
-    mealOptionsByDate: visibleMealOptionsByDate,
-    effectiveOrders,
-  });
+  const validatedOrders: {
+    date: Date;
+    mealOptionId: string;
+    items: {
+      choiceId: string;
+      selectedIngredients: string[];
+    }[];
+  }[] = [];
+
+  for (const order of orders) {
+    if (!order?.date || !order?.mealOptionId || !Array.isArray(order?.items)) {
+      return jsonError("Each order must include date, mealOptionId and items", 400);
+    }
+
+    if (submittedDates.has(order.date)) {
+      return jsonError(`Duplicate order date: ${order.date}`, 400);
+    }
+    submittedDates.add(order.date);
+
+    if (!weekDateSet.has(order.date)) {
+      return jsonError(`Order date is outside selected week: ${order.date}`, 400);
+    }
+
+    if (!orderableDateSet.has(order.date)) {
+      return jsonError(`Date is not orderable: ${order.date}`, 400);
+    }
+
+    const date = parseISO(order.date);
+    if (Number.isNaN(date.getTime())) {
+      return jsonError(`Invalid order date: ${order.date}`, 400);
+    }
+
+    const meal = mealOptionMap.get(order.mealOptionId);
+    if (!meal) {
+      return jsonError(`Invalid meal option for date ${order.date}`, 400);
+    }
+
+    const cleanItems = sanitizeItemsForMealOption(order.items, meal, date);
+    if (!cleanItems) {
+      return jsonError(`Invalid meal choices for date ${order.date}`, 400);
+    }
+
+    validatedOrders.push({
+      date: startOfDay(date),
+      mealOptionId: order.mealOptionId,
+      items: cleanItems,
+    });
+  }
+
+  for (const requiredDate of orderableDates) {
+    if (!submittedDates.has(requiredDate)) {
+      return jsonError(`Missing order for ${requiredDate}`, 400);
+    }
+  }
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      for (const order of validatedOrders) {
+        const savedOrder = await tx.lunchOrder.upsert({
+          where: {
+            pupilId_date: {
+              pupilId,
+              date: order.date,
+            },
+          },
+          update: {
+            mealOptionId: order.mealOptionId,
+          },
+          create: {
+            pupilId,
+            date: order.date,
+            mealOptionId: order.mealOptionId,
+          },
+          select: {
+            id: true,
+          },
+        });
+
+        await tx.orderItem.deleteMany({
+          where: {
+            orderId: savedOrder.id,
+          },
+        });
+
+        if (order.items.length > 0) {
+          await tx.orderItem.createMany({
+            data: order.items.map((item) => ({
+              orderId: savedOrder.id,
+              choiceId: item.choiceId,
+              selectedIngredients: item.selectedIngredients,
+            })),
+          });
+        }
+      }
+
+      if (updateDefaultPattern) {
+        for (const order of validatedOrders) {
+          const weekday = getDay(order.date);
+
+          const savedPattern = await tx.pupilMealWeekPattern.upsert({
+            where: {
+              pupilId_weekday: {
+                pupilId,
+                weekday,
+              },
+            },
+            update: {
+              mealOptionId: order.mealOptionId,
+            },
+            create: {
+              pupilId,
+              weekday,
+              mealOptionId: order.mealOptionId,
+            },
+            select: {
+              id: true,
+            },
+          });
+
+          await tx.pupilMealWeekPatternItem.deleteMany({
+            where: {
+              patternId: savedPattern.id,
+            },
+          });
+
+          if (order.items.length > 0) {
+            await tx.pupilMealWeekPatternItem.createMany({
+              data: order.items.map((item) => ({
+                patternId: savedPattern.id,
+                choiceId: item.choiceId,
+                selectedIngredients: item.selectedIngredients,
+              })),
+            });
+          }
+        }
+      }
+    });
+
+    return Response.json({ ok: true });
+  } catch (error) {
+    console.error("Failed to save lunch orders", error);
+
+    const message =
+      error instanceof Error ? error.message : "Failed to save lunch orders";
+
+    return jsonError(message, 500);
+  }
 });

@@ -8,7 +8,6 @@ import { DashboardHeader } from "@/components/dashboard/header";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/use-toast";
-import PrintRegistration from "@/components/supplier/PrintRegistration";
 
 // Modal for bulk add (your original)
 function AddPupilsModal({ open, onClose, onSaved, classroomId }) {
@@ -134,15 +133,6 @@ ${schoolName}`;
           </Button>
         </div>
       </div>
-      <PrintRegistration
-        open={showPrintModal}
-        onClose={() => setShowPrintModal(false)}
-        pupils={pupils}
-        classroomName={classroom?.name || ""}
-        schoolName={schoolName}
-        letterTemplate={letterTemplate}
-        logoUrl={logoUrl}
-      />
       <AddPupilsModal
         open={showAddModal}
         onClose={() => setShowAddModal(false)}

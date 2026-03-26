@@ -19,6 +19,8 @@ import {
   AlertTriangle,
   Check,
   Sticker,
+  ChevronDown,
+  ChevronRight,
 } from "lucide-react";
 
 type Allergen = { id: string; name: string; color?: string | null };
@@ -252,6 +254,8 @@ function ChoiceCard({
                 {choice.name}
               </h3>
 
+              <StatusBadge active={isEnabled} groupDisabled={disabled} />
+
               {choice.extraSticker ? (
                 <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
                   <Sticker className="h-3.5 w-3.5" />
@@ -296,7 +300,7 @@ function ChoiceCard({
                   {isEnabled ? (
                     <ToggleRight className="h-4 w-4" />
                   ) : (
-                    <ToggleRight className="h-4 w-4" />
+                    <ToggleLeft className="h-4 w-4" />
                   )}
                 </Button>
 
@@ -378,9 +382,21 @@ export default function ChoiceManager({
   const [pendingToggleChoice, setPendingToggleChoice] = useState<MealChoice | null>(null);
   const [pendingToggleNextValue, setPendingToggleNextValue] = useState<boolean | null>(null);
 
+  const [showDisabledChoices, setShowDisabledChoices] = useState(false);
+
   const editingChoice = useMemo(
     () => choices.find((c) => c.id === editingId) ?? null,
     [choices, editingId]
+  );
+
+  const activeChoices = useMemo(
+    () => choices.filter((choice) => choice.active === true),
+    [choices]
+  );
+
+  const disabledChoices = useMemo(
+    () => choices.filter((choice) => choice.active !== true),
+    [choices]
   );
 
   const [editName, setEditName] = useState("");
@@ -616,7 +632,7 @@ export default function ChoiceManager({
           Loading choices...
         </div>
       ) : (
-        <div className="space-y-2">
+        <div className="space-y-3">
           {choices.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-6 text-center">
               <div className="text-sm font-medium text-slate-900">No choices yet</div>
@@ -625,16 +641,63 @@ export default function ChoiceManager({
               </div>
             </div>
           ) : (
-            choices.map((choice) => (
-              <ChoiceCard
-                key={choice.id}
-                choice={choice}
-                disabled={disabled}
-                busy={busyId === choice.id}
-                onEdit={() => openEdit(choice)}
-                onToggle={() => askToggleChoice(choice, !(choice.active === true))}
-              />
-            ))
+            <>
+              {activeChoices.length > 0 && (
+                <div className="space-y-2">
+                  {activeChoices.map((choice) => (
+                    <ChoiceCard
+                      key={choice.id}
+                      choice={choice}
+                      disabled={disabled}
+                      busy={busyId === choice.id}
+                      onEdit={() => openEdit(choice)}
+                      onToggle={() => askToggleChoice(choice, !(choice.active === true))}
+                    />
+                  ))}
+                </div>
+              )}
+
+              {disabledChoices.length > 0 && (
+                <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50/70">
+                  <button
+                    type="button"
+                    onClick={() => setShowDisabledChoices((v) => !v)}
+                    className="flex w-full items-center justify-between px-4 py-3 text-left"
+                  >
+                    <div>
+                      <div className="text-sm font-semibold text-slate-700">
+                        Disabled choices
+                      </div>
+                      <div className="text-xs text-slate-500">
+                        {disabledChoices.length} hidden choice
+                        {disabledChoices.length === 1 ? "" : "s"}
+                      </div>
+                    </div>
+
+                    {showDisabledChoices ? (
+                      <ChevronDown className="h-5 w-5 text-slate-500" />
+                    ) : (
+                      <ChevronRight className="h-5 w-5 text-slate-500" />
+                    )}
+                  </button>
+
+                  {showDisabledChoices && (
+                    <div className="space-y-2 px-3 pb-3">
+                      {disabledChoices.map((choice) => (
+                        <ChoiceCard
+                          key={choice.id}
+                          choice={choice}
+                          disabled={disabled}
+                          busy={busyId === choice.id}
+                          onEdit={() => openEdit(choice)}
+                          onToggle={() => askToggleChoice(choice, !(choice.active === true))}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </>
           )}
 
           <AddChoiceCard
@@ -664,27 +727,27 @@ export default function ChoiceManager({
             {editingChoice ? (
               <div className="flex-1 space-y-4 overflow-y-auto px-4 py-4 sm:px-6">
                 <SectionCard title="Status">
-<Button
-  type="button"
-  className={cn(
-    "h-12 w-full rounded-2xl text-base font-semibold text-white",
-    editActive ? "bg-green-600 hover:bg-green-700" : "bg-red-600 hover:bg-red-700"
-  )}
-  onClick={() => setEditActive((v) => !v)}
-  disabled={busyId === editingChoice.id}
->
-  {editActive ? (
-    <>
-      <ToggleRight className="mr-2 h-5 w-5" />
-      Enabled
-    </>
-  ) : (
-    <>
-      <ToggleLeft className="mr-2 h-5 w-5" />
-      Disabled
-    </>
-  )}
-</Button>
+                  <Button
+                    type="button"
+                    className={cn(
+                      "h-12 w-full rounded-2xl text-base font-semibold text-white",
+                      editActive ? "bg-green-600 hover:bg-green-700" : "bg-red-600 hover:bg-red-700"
+                    )}
+                    onClick={() => setEditActive((v) => !v)}
+                    disabled={busyId === editingChoice.id}
+                  >
+                    {editActive ? (
+                      <>
+                        <ToggleRight className="mr-2 h-5 w-5" />
+                        Enabled
+                      </>
+                    ) : (
+                      <>
+                        <ToggleLeft className="mr-2 h-5 w-5" />
+                        Disabled
+                      </>
+                    )}
+                  </Button>
                 </SectionCard>
 
                 <SectionCard title="Basic details">
@@ -782,27 +845,27 @@ export default function ChoiceManager({
 
             <div className="flex-1 space-y-4 overflow-y-auto px-4 py-4 sm:px-6">
               <SectionCard title="Status">
-<Button
-  type="button"
-  className={cn(
-    "h-12 w-full rounded-2xl text-base font-semibold text-white",
-    addActive ? "bg-green-600 hover:bg-green-700" : "bg-red-600 hover:bg-red-700"
-  )}
-  onClick={() => setAddActive((v) => !v)}
-  disabled={busyId === "__add__"}
->
-  {addActive ? (
-    <>
-      <ToggleRight className="mr-2 h-5 w-5" />
-      Enabled
-    </>
-  ) : (
-    <>
-      <ToggleLeft className="mr-2 h-5 w-5" />
-      Disabled
-    </>
-  )}
-</Button>
+                <Button
+                  type="button"
+                  className={cn(
+                    "h-12 w-full rounded-2xl text-base font-semibold text-white",
+                    addActive ? "bg-green-600 hover:bg-green-700" : "bg-red-600 hover:bg-red-700"
+                  )}
+                  onClick={() => setAddActive((v) => !v)}
+                  disabled={busyId === "__add__"}
+                >
+                  {addActive ? (
+                    <>
+                      <ToggleRight className="mr-2 h-5 w-5" />
+                      Enabled
+                    </>
+                  ) : (
+                    <>
+                      <ToggleLeft className="mr-2 h-5 w-5" />
+                      Disabled
+                    </>
+                  )}
+                </Button>
               </SectionCard>
 
               <SectionCard title="Basic details">
@@ -881,70 +944,70 @@ export default function ChoiceManager({
         </DialogContent>
       </Dialog>
 
-<Dialog
-  open={confirmOpen}
-  onOpenChange={(open) => {
-    setConfirmOpen(open);
-    if (!open) {
-      setPendingToggleChoice(null);
-      setPendingToggleNextValue(null);
-    }
-  }}
->
-  <DialogContent className="rounded-2xl bg-white text-slate-900 shadow-xl sm:max-w-md">
-    <DialogHeader>
-      <DialogTitle className="flex items-center gap-2">
-        <AlertTriangle className="h-5 w-5 text-amber-500" />
-        Confirm status change
-      </DialogTitle>
-      <DialogDescription>
-        {pendingToggleChoice && pendingToggleNextValue !== null
-          ? `Are you sure you want to ${
-              pendingToggleNextValue ? "enable" : "disable"
-            } "${pendingToggleChoice.name}"?`
-          : "Are you sure?"}
-      </DialogDescription>
-    </DialogHeader>
-
-    <DialogFooter>
-      <div className="flex w-full flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-        <Button
-          variant="outline"
-          onClick={() => {
-            setConfirmOpen(false);
+      <Dialog
+        open={confirmOpen}
+        onOpenChange={(open) => {
+          setConfirmOpen(open);
+          if (!open) {
             setPendingToggleChoice(null);
             setPendingToggleNextValue(null);
-          }}
-          className="rounded-xl"
-        >
-          Cancel
-        </Button>
+          }
+        }}
+      >
+        <DialogContent className="rounded-2xl bg-white text-slate-900 shadow-xl sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-amber-500" />
+              Confirm status change
+            </DialogTitle>
+            <DialogDescription>
+              {pendingToggleChoice && pendingToggleNextValue !== null
+                ? `Are you sure you want to ${
+                    pendingToggleNextValue ? "enable" : "disable"
+                  } "${pendingToggleChoice.name}"?`
+                : "Are you sure?"}
+            </DialogDescription>
+          </DialogHeader>
 
-        <Button
-          onClick={confirmToggleChoice}
-          className={cn(
-            "rounded-xl text-white",
-            pendingToggleNextValue
-              ? "bg-green-600 hover:bg-green-700"
-              : "bg-red-600 hover:bg-red-700"
-          )}
-        >
-          {pendingToggleNextValue ? (
-            <>
-              <ToggleRight className="mr-2 h-4 w-4" />
-              Enable
-            </>
-          ) : (
-            <>
-              <ToggleLeft className="mr-2 h-4 w-4" />
-              Disable
-            </>
-          )}
-        </Button>
-      </div>
-    </DialogFooter>
-  </DialogContent>
-</Dialog>
+          <DialogFooter>
+            <div className="flex w-full flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setConfirmOpen(false);
+                  setPendingToggleChoice(null);
+                  setPendingToggleNextValue(null);
+                }}
+                className="rounded-xl"
+              >
+                Cancel
+              </Button>
+
+              <Button
+                onClick={confirmToggleChoice}
+                className={cn(
+                  "rounded-xl text-white",
+                  pendingToggleNextValue
+                    ? "bg-green-600 hover:bg-green-700"
+                    : "bg-red-600 hover:bg-red-700"
+                )}
+              >
+                {pendingToggleNextValue ? (
+                  <>
+                    <ToggleRight className="mr-2 h-4 w-4" />
+                    Enable
+                  </>
+                ) : (
+                  <>
+                    <ToggleLeft className="mr-2 h-4 w-4" />
+                    Disable
+                  </>
+                )}
+              </Button>
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

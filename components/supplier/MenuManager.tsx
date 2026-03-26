@@ -14,6 +14,7 @@ import {
   ToggleRight,
   AlertTriangle,
   Upload,
+  X,
 } from "lucide-react";
 import {
   Dialog,
@@ -148,9 +149,14 @@ function toDateInputValue(v: string | null | undefined) {
 interface Props {
   initialSections: MenuSection[];
   allAllergens: AllergenTag[];
+  allSchools: SchoolTag[];
 }
 
-export default function MenuManager({ initialSections, allAllergens }: Props) {
+export default function MenuManager({
+  initialSections,
+  allAllergens,
+  allSchools,
+}: Props) {
   const [sections, setSections] = useState<MenuSection[]>(initialSections);
   const [collapsedMenus, setCollapsedMenus] = useState<Record<string, boolean>>(
     () => Object.fromEntries(initialSections.map((section) => [section.menu.id, true]))
@@ -227,17 +233,15 @@ export default function MenuManager({ initialSections, allAllergens }: Props) {
     };
   }, [mealOptionImagePreviewUrl]);
 
-  const allSchools = useMemo(() => {
-    const map = new Map<string, SchoolTag>();
+  const sortedSchools = useMemo(
+    () => [...allSchools].sort((a, b) => a.name.localeCompare(b.name)),
+    [allSchools]
+  );
 
-    for (const section of sections) {
-      for (const school of section.menu.schools) {
-        map.set(school.id, school);
-      }
-    }
-
-    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
-  }, [sections]);
+  const availableSchoolsToAdd = useMemo(
+    () => sortedSchools.filter((school) => !selectedSchoolIds.includes(school.id)),
+    [sortedSchools, selectedSchoolIds]
+  );
 
   const menuLibrary = useMemo<MenuLibraryItem[]>(
     () =>
@@ -308,7 +312,7 @@ export default function MenuManager({ initialSections, allAllergens }: Props) {
 
   function toggleSchool(schoolId: string) {
     setSelectedSchoolIds((prev) =>
-      prev.includes(schoolId) ? prev.filter((id) => id !== schoolId) : [...prev, schoolId]
+      prev.includes(schoolId) ? prev.filter((id) => id !== id && id !== schoolId) : [...prev, schoolId]
     );
   }
 
@@ -693,18 +697,22 @@ export default function MenuManager({ initialSections, allAllergens }: Props) {
                     </div>
                   </div>
 
-                  {section.menu.schools.length > 0 && (
-                    <div className="mt-4 flex flex-wrap gap-2">
-                      {section.menu.schools.map((school) => (
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {section.menu.schools.length > 0 ? (
+                      section.menu.schools.map((school) => (
                         <span
                           key={school.id}
                           className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-sm text-slate-700"
                         >
                           {school.name}
                         </span>
-                      ))}
-                    </div>
-                  )}
+                      ))
+                    ) : (
+                      <span className="inline-flex items-center rounded-full bg-blue-50 px-3 py-1 text-sm font-medium text-blue-700">
+                        GLOBAL
+                      </span>
+                    )}
+                  </div>
                 </div>
 
                 <div className="flex shrink-0 flex-wrap items-center gap-2">
@@ -888,7 +896,7 @@ export default function MenuManager({ initialSections, allAllergens }: Props) {
                   onChange={(e) => setDuplicateFromMenuId(e.target.value)}
                   className="flex h-10 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none"
                 >
-                  <option value="">No start new menu</option>
+                  <option value="">Start new menu</option>
                   {menuLibrary.map((menu) => (
                     <option key={menu.id} value={menu.id}>
                       {menu.name}
@@ -908,31 +916,66 @@ export default function MenuManager({ initialSections, allAllergens }: Props) {
               />
             </div>
 
-            {allSchools.length > 0 && (
-              <div className="space-y-3">
-                <label className="text-sm font-medium text-slate-700">Schools</label>
-                <div className="flex flex-wrap gap-2">
-                  {allSchools.map((school) => {
-                    const selected = selectedSchoolIds.includes(school.id);
+            <div className="space-y-3">
+              <label className="text-sm font-medium text-slate-700">Schools</label>
 
-                    return (
-                      <button
-                        key={school.id}
-                        type="button"
-                        onClick={() => toggleSchool(school.id)}
-                        className={`rounded-full border px-3 py-1.5 text-sm transition ${
-                          selected
-                            ? "border-blue-200 bg-blue-50 text-blue-700"
-                            : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-                        }`}
-                      >
-                        {school.name}
-                      </button>
-                    );
-                  })}
-                </div>
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                {selectedSchoolIds.length > 0 ? (
+                  <div className="mb-3 flex flex-wrap gap-2">
+                    {selectedSchoolIds.map((schoolId) => {
+                      const school = sortedSchools.find((s) => s.id === schoolId);
+                      if (!school) return null;
+
+                      return (
+                        <span
+                          key={school.id}
+                          className="inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1 text-sm text-blue-700"
+                        >
+                          {school.name}
+                          <button
+                            type="button"
+                            onClick={() => toggleSchool(school.id)}
+                            className="rounded-full p-0.5 hover:bg-blue-100"
+                            aria-label={`Remove ${school.name}`}
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        </span>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="mb-3">
+                    <span className="inline-flex items-center rounded-full bg-blue-50 px-3 py-1 text-sm font-medium text-blue-700">
+                      GLOBAL
+                    </span>
+                  </div>
+                )}
+
+                <select
+                  value=""
+                  onChange={(e) => {
+                    const schoolId = e.target.value;
+                    if (!schoolId) return;
+                    toggleSchool(schoolId);
+                  }}
+                  className="flex h-10 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none"
+                >
+                  <option value="">
+                    {availableSchoolsToAdd.length > 0 ? "Add school..." : "All schools added"}
+                  </option>
+                  {availableSchoolsToAdd.map((school) => (
+                    <option key={school.id} value={school.id}>
+                      {school.name}
+                    </option>
+                  ))}
+                </select>
+
+                <p className="mt-2 text-xs text-slate-500">
+                  Leave blank for a global menu available to all schools.
+                </p>
               </div>
-            )}
+            </div>
 
             <div className="space-y-2">
               <label className="text-sm font-medium text-slate-700">Status</label>
