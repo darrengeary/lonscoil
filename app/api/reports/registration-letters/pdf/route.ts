@@ -25,10 +25,10 @@ function buildHtml(args: {
     pupilName: string | null;
     classroomName: string;
   }[];
-  schoolMealsLogoUrl: string;
+  isaacbuttLogoUrl: string;
   lunchlogLogoUrl: string;
 }) {
-  const { schoolName, letters, schoolMealsLogoUrl, lunchlogLogoUrl } = args;
+  const { schoolName, letters, isaacbuttLogoUrl, lunchlogLogoUrl } = args;
 
   return `
     <!doctype html>
@@ -76,7 +76,7 @@ function buildHtml(args: {
             margin-bottom: 22px;
           }
 
-          .branding-schoolmeals {
+          .branding-isaacbutt {
             height: 84px;
             width: auto;
             object-fit: contain;
@@ -166,9 +166,9 @@ function buildHtml(args: {
           <div class="page">
             <div class="top">
               <img
-                class="branding-schoolmeals"
-                src="${escapeHtml(schoolMealsLogoUrl)}"
-                alt="SchoolMeals"
+                class="branding-isaacbutt"
+                src="${escapeHtml(isaacbuttLogoUrl)}"
+                alt="isaacbutt"
               />
             </div>
 
@@ -182,7 +182,7 @@ function buildHtml(args: {
                 <br /><br />
                 Your child has been added to Lunchlog for school meals.
                 Please register now at
-                <span class="site">schoolmeals.lunchlog.ie</span>
+                <span class="site">isaacbutt.lunchlog.ie</span>
                 using the code below.
               </div>
 
@@ -311,7 +311,7 @@ export const GET = auth(async (req) => {
         pupilName: p.name ?? null,
         classroomName: p.classroom?.name ?? "Classroom",
       })),
-      schoolMealsLogoUrl: `${origin}/schoolmeals.png`,
+      isaacbuttLogoUrl: `${origin}/isaacbutt.jpg`,
       lunchlogLogoUrl: `${origin}/lunchlog.png`,
     });
 

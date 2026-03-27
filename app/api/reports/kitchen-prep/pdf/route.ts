@@ -79,7 +79,7 @@ function buildHtml(args: {
   splitMeals: SplitMealRow[];
   individualChoiceRows: IndividualChoiceRow[];
   studentRows: StudentMealRow[];
-  schoolMealsLogoUrl: string;
+  isaacbuttLogoUrl: string;
   lunchlogLogoUrl: string;
 }) {
   const {
@@ -97,7 +97,7 @@ function buildHtml(args: {
     splitMeals,
     individualChoiceRows,
     studentRows,
-    schoolMealsLogoUrl,
+    isaacbuttLogoUrl,
     lunchlogLogoUrl,
   } = args;
 
@@ -132,7 +132,7 @@ function buildHtml(args: {
             margin-bottom: 14px;
           }
 
-          .branding-schoolmeals {
+          .branding-isaacbutt {
             height: 62px;
             width: auto;
             object-fit: contain;
@@ -251,9 +251,9 @@ function buildHtml(args: {
       <body>
         <div class="branding">
           <img
-            class="branding-schoolmeals"
-            src="${escapeHtml(schoolMealsLogoUrl)}"
-            alt="SchoolMeals"
+            class="branding-isaacbutt"
+            src="${escapeHtml(isaacbuttLogoUrl)}"
+            alt="isaacbutt"
           />
         </div>
 
@@ -808,7 +808,7 @@ export const GET = auth(async (req) => {
       splitMeals: result.data.splitMeals,
       individualChoiceRows: result.data.individualChoiceRows,
       studentRows: result.data.studentRows,
-      schoolMealsLogoUrl: `${origin}/schoolmeals.png`,
+      isaacbuttLogoUrl: `${origin}/isaacbutt.jpg`,
       lunchlogLogoUrl: `${origin}/lunchlog.png`,
     });
 
