@@ -24,7 +24,7 @@ import { DashboardHeader } from "@/components/dashboard/header";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Loader } from "lucide-react";
 
-type ScheduleType = "TERM" | "HOLIDAY";
+type ScheduleType = "TERM" | "HOLIDAY" | "HALF_DAY";
 
 type Schedule = {
   id: string;

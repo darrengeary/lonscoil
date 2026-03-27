@@ -29,7 +29,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri"];
 
-type ScheduleType = "TERM" | "HOLIDAY";
+type ScheduleType = "TERM" | "HOLIDAY" | "HALF_DAY";
 
 type School = { id: string; name: string };
 
@@ -56,6 +56,87 @@ function getCalendarDays(month: Date) {
   const end = endOfWeek(endOfMonth(month), { weekStartsOn: 1 });
   const allDays = eachDayOfInterval({ start, end });
   return allDays.filter((d) => d.getDay() >= 1 && d.getDay() <= 5);
+}
+
+function getPriority(type: ScheduleType) {
+  switch (type) {
+    case "HOLIDAY":
+      return 3;
+    case "HALF_DAY":
+      return 2;
+    case "TERM":
+    default:
+      return 1;
+  }
+}
+
+function getScheduleLabel(type: ScheduleType) {
+  switch (type) {
+    case "HOLIDAY":
+      return "Holiday";
+    case "HALF_DAY":
+      return "Half Day";
+    case "TERM":
+    default:
+      return "Term";
+  }
+}
+
+function getScheduleBadgeClass(type: ScheduleType) {
+  switch (type) {
+    case "HOLIDAY":
+      return "bg-[#FFE6E6] text-[#DC2626]";
+    case "HALF_DAY":
+      return "bg-amber-100 text-amber-700";
+    case "TERM":
+    default:
+      return "bg-[#E7F8F0] text-[#16A34A]";
+  }
+}
+
+function getScheduleBorderColor(type: ScheduleType) {
+  switch (type) {
+    case "HOLIDAY":
+      return "#ef4444";
+    case "HALF_DAY":
+      return "#f59e0b";
+    case "TERM":
+    default:
+      return "#22c55e";
+  }
+}
+
+function ScheduleDot({
+  type,
+  size = "small",
+}: {
+  type: ScheduleType;
+  size?: "small" | "medium";
+}) {
+  const dotClass = size === "medium" ? "w-3 h-3" : "w-2.5 h-2.5";
+
+  if (type === "HALF_DAY") {
+    return (
+      <span
+        className={`inline-block ${dotClass} rounded-full border border-white overflow-hidden`}
+      >
+        <span className="flex w-full h-full">
+          <span className="w-1/2 h-full bg-green-500" />
+          <span className="w-1/2 h-full bg-red-500" />
+        </span>
+      </span>
+    );
+  }
+
+  return (
+    <span
+      className={[
+        "inline-block rounded-full border border-white",
+        dotClass,
+        type === "HOLIDAY" ? "bg-red-500" : "bg-green-500",
+      ].join(" ")}
+    />
+  );
 }
 
 export default function AdminSchedulesPage() {
@@ -123,13 +204,16 @@ export default function AdminSchedulesPage() {
 
   function getFilteredEvents(events: Schedule[]): Schedule[] {
     const perSchool: Record<string, Schedule> = {};
+
     for (const ev of events) {
       const sid = ev.school?.id ?? ev.schoolId;
       if (!sid) continue;
-      if (!perSchool[sid] || ev.type === "HOLIDAY") {
+
+      if (!perSchool[sid] || getPriority(ev.type) > getPriority(perSchool[sid].type)) {
         perSchool[sid] = ev;
       }
     }
+
     return Object.values(perSchool);
   }
 
@@ -275,14 +359,18 @@ export default function AdminSchedulesPage() {
               </Button>
             </div>
 
-            <div className="flex items-center gap-4 mb-3">
+            <div className="flex items-center gap-4 mb-3 flex-wrap">
               <span className="inline-flex items-center">
-                <span className="inline-block w-3 h-3 rounded-full bg-green-500 mr-1" />
-                <span className="text-xs">Term</span>
+                <ScheduleDot type="TERM" size="medium" />
+                <span className="text-xs ml-1">Term</span>
               </span>
               <span className="inline-flex items-center">
-                <span className="inline-block w-3 h-3 rounded-full bg-red-500 mr-1" />
-                <span className="text-xs">Holiday</span>
+                <ScheduleDot type="HOLIDAY" size="medium" />
+                <span className="text-xs ml-1">Holiday</span>
+              </span>
+              <span className="inline-flex items-center">
+                <ScheduleDot type="HALF_DAY" size="medium" />
+                <span className="text-xs ml-1">Half Day</span>
               </span>
             </div>
 
@@ -298,11 +386,15 @@ export default function AdminSchedulesPage() {
                 const key = format(date, "yyyy-MM-dd");
                 const filteredEvents = getFilteredEvents(eventsByDate[key] || []);
 
+                const termCount = filteredEvents.filter((e) => e.type === "TERM").length;
+                const holidayCount = filteredEvents.filter((e) => e.type === "HOLIDAY").length;
+                const halfDayCount = filteredEvents.filter((e) => e.type === "HALF_DAY").length;
+
                 return (
                   <div
                     key={date.toISOString()}
                     className={[
-                      "h-16 rounded flex flex-col items-start justify-between p-1 relative transition",
+                      "min-h-[72px] rounded flex flex-col items-start justify-between p-1 relative transition border",
                       outOfMonth ? "bg-gray-100 text-gray-400" : "bg-white",
                       filteredEvents.length ? "cursor-pointer hover:ring-2 hover:ring-blue-300" : "",
                     ].join(" ")}
@@ -314,27 +406,40 @@ export default function AdminSchedulesPage() {
                     title={
                       filteredEvents.length
                         ? filteredEvents
-                            .map((e) => `${e.school?.name ?? e.schoolId}: ${e.type}`)
+                            .map(
+                              (e) =>
+                                `${e.school?.name ?? e.schoolId}: ${getScheduleLabel(e.type)}`
+                            )
                             .join("\n")
                         : undefined
                     }
                   >
-                    <span className="text-xs">{format(date, "d")}</span>
+                    <div className="w-full flex items-start justify-between gap-2">
+                      <span className="text-xs">{format(date, "d")}</span>
+
+                      {filteredEvents.length > 0 && (
+                        <span className="text-[10px] text-muted-foreground text-right leading-tight">
+                          {filteredEvents.length} school{filteredEvents.length === 1 ? "" : "s"}
+                        </span>
+                      )}
+                    </div>
+
+                    {(termCount > 0 || holidayCount > 0 || halfDayCount > 0) && (
+                      <div className="w-full text-[10px] text-muted-foreground leading-tight mt-1">
+                        {termCount > 0 && <div>{termCount} term</div>}
+                        {holidayCount > 0 && <div>{holidayCount} holiday</div>}
+                        {halfDayCount > 0 && <div>{halfDayCount} half day</div>}
+                      </div>
+                    )}
 
                     <div className="flex flex-row gap-[2px] mt-auto mb-1 flex-wrap">
                       {filteredEvents.map((e, idx) => (
                         <span
-                          key={e.school?.id ?? e.schoolId ?? idx}
-                          className={[
-                            "w-2.5 h-2.5 rounded-full border border-white",
-                            e.type === "HOLIDAY" ? "bg-red-500" : "bg-green-500",
-                          ].join(" ")}
-                          title={
-                            (e.school?.name ?? "School") +
-                            ": " +
-                            (e.type === "HOLIDAY" ? "Holiday" : "Term")
-                          }
-                        />
+                          key={`${e.school?.id ?? e.schoolId ?? idx}-${e.type}`}
+                          title={`${e.school?.name ?? "School"}: ${getScheduleLabel(e.type)}`}
+                        >
+                          <ScheduleDot type={e.type} />
+                        </span>
                       ))}
                     </div>
                   </div>
@@ -350,17 +455,15 @@ export default function AdminSchedulesPage() {
           <div className="block md:hidden space-y-3 mt-2">
             {schedules.map((sch) => (
               <div key={sch.id} className="bg-white rounded-2xl shadow-sm p-4 flex flex-col gap-2">
-                <div className="flex justify-between items-center">
+                <div className="flex justify-between items-center gap-3">
                   <span className="font-bold text-[#27364B]">{sch.name}</span>
                   <span
                     className={
                       "inline-block px-3 py-1 rounded-full font-bold text-xs " +
-                      (sch.type === "HOLIDAY"
-                        ? "bg-[#FFE6E6] text-[#DC2626]"
-                        : "bg-[#E7F8F0] text-[#16A34A]")
+                      getScheduleBadgeClass(sch.type)
                     }
                   >
-                    {sch.type === "HOLIDAY" ? "Holiday" : "Term"}
+                    {getScheduleLabel(sch.type)}
                   </span>
                 </div>
 
@@ -420,12 +523,10 @@ export default function AdminSchedulesPage() {
                       <span
                         className={
                           "inline-block px-3 py-1 rounded-full font-bold text-xs " +
-                          (sch.type === "HOLIDAY"
-                            ? "bg-[#FFE6E6] text-[#DC2626]"
-                            : "bg-[#E7F8F0] text-[#16A34A]")
+                          getScheduleBadgeClass(sch.type)
                         }
                       >
-                        {sch.type === "HOLIDAY" ? "Holiday" : "Term"}
+                        {getScheduleLabel(sch.type)}
                       </span>
                     </td>
                     <td className="py-3 px-4 text-right">
@@ -464,7 +565,6 @@ export default function AdminSchedulesPage() {
         </TabsContent>
       </Tabs>
 
-      {/* Day details modal */}
       <Dialog open={dayModalOpen} onOpenChange={setDayModalOpen}>
         <DialogContent className="bg-white shadow-xl rounded-2xl">
           <DialogHeader>
@@ -494,23 +594,24 @@ export default function AdminSchedulesPage() {
                       key={e.id}
                       className="border-l-4 pl-2"
                       style={{
-                        borderColor: e.type === "HOLIDAY" ? "#ef4444" : "#22c55e",
+                        borderColor: getScheduleBorderColor(e.type),
                       }}
                     >
                       <div className="font-semibold">{e.school?.name ?? "-"}</div>
 
-                      <div className="text-xs mb-1">
+                      <div className="text-xs mb-1 flex items-center gap-2 flex-wrap">
                         <span
                           className={
-                            "inline-block px-2 py-0.5 rounded-full font-bold text-[11px] mr-1 " +
-                            (e.type === "HOLIDAY"
-                              ? "bg-red-100 text-red-600"
-                              : "bg-green-100 text-green-700")
+                            "inline-block px-2 py-0.5 rounded-full font-bold text-[11px] " +
+                            getScheduleBadgeClass(e.type)
                           }
                         >
-                          {e.type === "HOLIDAY" ? "Holiday" : "Term"}
+                          {getScheduleLabel(e.type)}
                         </span>
-                        <span>{e.name}</span>
+                        <span className="inline-flex items-center gap-1">
+                          <ScheduleDot type={e.type} />
+                          <span>{e.name}</span>
+                        </span>
                       </div>
 
                       <div className="text-xs text-muted-foreground">
@@ -536,7 +637,6 @@ export default function AdminSchedulesPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Create/Edit modal */}
       <Dialog
         open={editOpen}
         onOpenChange={(v) => {
@@ -579,6 +679,7 @@ export default function AdminSchedulesPage() {
                 <select name="type" defaultValue={editing.type} className="w-full border rounded p-2">
                   <option value="TERM">School Term</option>
                   <option value="HOLIDAY">Holiday</option>
+                  <option value="HALF_DAY">Half Day</option>
                 </select>
               </div>
 

@@ -201,32 +201,6 @@ function startOfDay(d) {
   return x;
 }
 
-async function createMealOption({
-  menuId,
-  name,
-  stickerCount,
-  imageUrl,
-  nutrition = {},
-}) {
-  return prisma.mealOption.create({
-    data: {
-      menuId,
-      name,
-      stickerCount,
-      active: true,
-      imageUrl: imageUrl ?? null,
-      caloriesKcal: nutrition.kcal ?? null,
-      proteinG: nutrition.p ?? null,
-      carbsG: nutrition.c ?? null,
-      sugarsG: nutrition.s ?? null,
-      fatG: nutrition.f ?? null,
-      saturatesG: nutrition.sat ?? null,
-      fibreG: nutrition.fib ?? null,
-      saltG: nutrition.salt ?? null,
-    },
-  });
-}
-
 function addDays(d, n) {
   const x = new Date(d);
   x.setDate(x.getDate() + n);
@@ -269,6 +243,190 @@ function makePupilName(index) {
 function makeParentName(index, pupilLastName) {
   const first = PARENT_FIRST_NAMES[index % PARENT_FIRST_NAMES.length];
   return `${first} ${pupilLastName}`;
+}
+
+function schoolShortName(name) {
+  return name.split(",")[0].trim();
+}
+
+function supportsHalfDay() {
+  return Object.prototype.hasOwnProperty.call(ScheduleType, "HALF_DAY");
+}
+
+function buildBaseSchedules(academicStartYear, academicEndYear) {
+  return [
+    {
+      key: "autumn_term",
+      name: `Autumn Term ${academicStartYear}`,
+      type: ScheduleType.TERM,
+      startDate: dateYMD(academicStartYear, 9, 1),
+      endDate: dateYMD(academicStartYear, 10, 25),
+    },
+    {
+      key: "halloween_midterm",
+      name: `Halloween Mid-Term ${academicStartYear}`,
+      type: ScheduleType.HOLIDAY,
+      startDate: dateYMD(academicStartYear, 10, 28),
+      endDate: dateYMD(academicStartYear, 11, 1),
+    },
+    {
+      key: "winter_term_1",
+      name: `Winter Term ${academicStartYear}`,
+      type: ScheduleType.TERM,
+      startDate: dateYMD(academicStartYear, 11, 4),
+      endDate: dateYMD(academicStartYear, 12, 20),
+    },
+    {
+      key: "christmas_holidays",
+      name: `Christmas Holidays ${academicStartYear}/${academicEndYear}`,
+      type: ScheduleType.HOLIDAY,
+      startDate: dateYMD(academicStartYear, 12, 23),
+      endDate: dateYMD(academicEndYear, 1, 3),
+    },
+    {
+      key: "spring_term_1",
+      name: `Spring Term ${academicEndYear}`,
+      type: ScheduleType.TERM,
+      startDate: dateYMD(academicEndYear, 1, 6),
+      endDate: dateYMD(academicEndYear, 2, 14),
+    },
+    {
+      key: "february_midterm",
+      name: `February Mid-Term ${academicEndYear}`,
+      type: ScheduleType.HOLIDAY,
+      startDate: dateYMD(academicEndYear, 2, 17),
+      endDate: dateYMD(academicEndYear, 2, 21),
+    },
+    {
+      key: "spring_term_2",
+      name: `Spring Term ${academicEndYear}`,
+      type: ScheduleType.TERM,
+      startDate: dateYMD(academicEndYear, 2, 24),
+      endDate: dateYMD(academicEndYear, 4, 11),
+    },
+    {
+      key: "easter_holidays",
+      name: `Easter Holidays ${academicEndYear}`,
+      type: ScheduleType.HOLIDAY,
+      startDate: dateYMD(academicEndYear, 4, 14),
+      endDate: dateYMD(academicEndYear, 4, 25),
+    },
+    {
+      key: "summer_term",
+      name: `Summer Term ${academicEndYear}`,
+      type: ScheduleType.TERM,
+      startDate: dateYMD(academicEndYear, 4, 28),
+      endDate: dateYMD(academicEndYear, 6, 30),
+    },
+  ];
+}
+
+function buildSchoolSpecificSchedules({
+  schoolIndex,
+  schoolName,
+  academicStartYear,
+  academicEndYear,
+}) {
+  const shortName = schoolShortName(schoolName);
+  const extra = [];
+
+  if (schoolIndex === 1 || schoolIndex === 4 || schoolIndex === 7) {
+    extra.push({
+      name: `Local Holiday - ${shortName}`,
+      type: ScheduleType.HOLIDAY,
+      startDate: dateYMD(academicEndYear, 3, 17),
+      endDate: dateYMD(academicEndYear, 3, 17),
+    });
+  }
+
+  if (schoolIndex === 2 || schoolIndex === 8) {
+    extra.push({
+      name: `Staff Training Day - ${shortName}`,
+      type: ScheduleType.HOLIDAY,
+      startDate: dateYMD(academicEndYear, 1, 31),
+      endDate: dateYMD(academicEndYear, 1, 31),
+    });
+  }
+
+  if (supportsHalfDay() && (schoolIndex === 0 || schoolIndex === 3 || schoolIndex === 6)) {
+    extra.push({
+      name: `Christmas Half Day - ${shortName}`,
+      type: ScheduleType.HALF_DAY,
+      startDate: dateYMD(academicStartYear, 12, 20),
+      endDate: dateYMD(academicStartYear, 12, 20),
+    });
+  }
+
+  if (schoolIndex === 5) {
+    extra.push({
+      name: `Community Event Closure - ${shortName}`,
+      type: ScheduleType.HOLIDAY,
+      startDate: dateYMD(academicEndYear, 5, 9),
+      endDate: dateYMD(academicEndYear, 5, 9),
+    });
+  }
+
+  return extra;
+}
+
+async function seedSchedulesForSchool({
+  schoolId,
+  schoolName,
+  schoolIndex,
+  academicStartYear,
+  academicEndYear,
+}) {
+  const baseSchedules = buildBaseSchedules(academicStartYear, academicEndYear);
+  const schoolSpecificSchedules = buildSchoolSpecificSchedules({
+    schoolIndex,
+    schoolName,
+    academicStartYear,
+    academicEndYear,
+  });
+
+  const allSchedules = [...baseSchedules, ...schoolSpecificSchedules].map((s) => ({
+    name: `${s.name} - ${schoolShortName(schoolName)}`,
+    type: s.type,
+    startDate: s.startDate,
+    endDate: s.endDate,
+    schoolId,
+  }));
+
+  await prisma.schedule.createMany({
+    data: allSchedules,
+    skipDuplicates: true,
+  });
+
+  return {
+    baseCount: baseSchedules.length,
+    extraCount: schoolSpecificSchedules.length,
+  };
+}
+
+async function createMealOption({
+  menuId,
+  name,
+  stickerCount,
+  imageUrl,
+  nutrition = {},
+}) {
+  return prisma.mealOption.create({
+    data: {
+      menuId,
+      name,
+      stickerCount,
+      active: true,
+      imageUrl: imageUrl ?? null,
+      caloriesKcal: nutrition.kcal ?? null,
+      proteinG: nutrition.p ?? null,
+      carbsG: nutrition.c ?? null,
+      sugarsG: nutrition.s ?? null,
+      fatG: nutrition.f ?? null,
+      saturatesG: nutrition.sat ?? null,
+      fibreG: nutrition.fib ?? null,
+      saltG: nutrition.salt ?? null,
+    },
+  });
 }
 
 async function wipeSeedData() {
@@ -841,6 +999,8 @@ async function main() {
   let globalPupilIndex = 0;
   let assignedTestPupilCount = 0;
   let testSchoolId = null;
+  let totalBaseSchedulesSeeded = 0;
+  let totalExtraSchedulesSeeded = 0;
 
   const now = new Date();
   const currentYear = now.getFullYear();
@@ -882,32 +1042,16 @@ async function main() {
       select: { id: true, email: true, name: true },
     });
 
-    await prisma.schedule.createMany({
-      data: [
-        {
-          name: `School Year ${academicStartYear}/${academicEndYear} - ${school.name}`,
-          type: ScheduleType.TERM,
-          startDate: dateYMD(academicStartYear, 9, 1),
-          endDate: dateYMD(academicEndYear, 6, 30),
-          schoolId: school.id,
-        },
-        {
-          name: `Christmas ${academicEndYear - 1}/${academicEndYear} - ${school.name}`,
-          type: ScheduleType.HOLIDAY,
-          startDate: dateYMD(academicEndYear - 1, 12, 22),
-          endDate: dateYMD(academicEndYear, 1, 2),
-          schoolId: school.id,
-        },
-        {
-          name: `Easter ${academicEndYear} - ${school.name}`,
-          type: ScheduleType.HOLIDAY,
-          startDate: dateYMD(academicEndYear, 3, 30),
-          endDate: dateYMD(academicEndYear, 4, 10),
-          schoolId: school.id,
-        },
-      ],
-      skipDuplicates: true,
+    const seededSchedules = await seedSchedulesForSchool({
+      schoolId: school.id,
+      schoolName: school.name,
+      schoolIndex: i,
+      academicStartYear,
+      academicEndYear,
     });
+
+    totalBaseSchedulesSeeded += seededSchedules.baseCount;
+    totalExtraSchedulesSeeded += seededSchedules.extraCount;
 
     const classrooms = [];
 
@@ -1145,6 +1289,9 @@ async function main() {
   console.log(`   Global menus: 2 (Standard + HALAL)`);
   console.log(`   Meal options per menu: 3`);
   console.log(`   Meal groups per option: 2`);
+  console.log(`   Base schedule rows seeded: ${totalBaseSchedulesSeeded}`);
+  console.log(`   School-specific schedule deviations: ${totalExtraSchedulesSeeded}`);
+  console.log(`   HALF_DAY supported: ${supportsHalfDay() ? "yes" : "no"}`);
   console.log(`   Test parent: ${TEST_USER_EMAIL}`);
   console.log(`   Test admin: ${TEST_ADMIN_EMAIL}`);
   console.log(`   Test parent pupils assigned: ${assignedTestPupilCount}`);
