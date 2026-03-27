@@ -179,20 +179,28 @@ export const PUT = auth(async (req) => {
     return jsonError("Invalid pupil", 401);
   }
 
-  const availableMenus = await prisma.menu.findMany({
-    where: {
-      active: true,
-      schoolLinks: {
-        some: {
-          schoolId: pupil.classroom.schoolId,
+const availableMenus = await prisma.menu.findMany({
+  where: {
+    active: true,
+    OR: [
+      {
+        schoolLinks: {
+          some: {
+            schoolId: pupil.classroom.schoolId,
+          },
         },
       },
-    },
-    select: {
-      id: true,
-    },
-  });
-
+      {
+        schoolLinks: {
+          none: {},
+        },
+      },
+    ],
+  },
+  select: {
+    id: true,
+  },
+});
   const validMenuIds = new Set(availableMenus.map((m) => m.id));
   if (!validMenuIds.has(menuId)) {
     return jsonError("Invalid menu for pupil school", 400);

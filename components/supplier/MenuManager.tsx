@@ -310,11 +310,13 @@ export default function MenuManager({
     setTimeout(() => menuNameRef.current?.focus(), 0);
   }
 
-  function toggleSchool(schoolId: string) {
-    setSelectedSchoolIds((prev) =>
-      prev.includes(schoolId) ? prev.filter((id) => id !== id && id !== schoolId) : [...prev, schoolId]
-    );
-  }
+function toggleSchool(schoolId: string) {
+  setSelectedSchoolIds((prev) =>
+    prev.includes(schoolId)
+      ? prev.filter((id) => id !== schoolId)
+      : [...prev, schoolId]
+  );
+}
 
   async function saveMenu() {
     const name = menuName.trim();
