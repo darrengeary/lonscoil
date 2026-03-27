@@ -321,54 +321,28 @@ function buildBaseSchedules(academicStartYear, academicEndYear) {
   ];
 }
 
-function buildSchoolSpecificSchedules({
-  schoolIndex,
-  schoolName,
-  academicStartYear,
-  academicEndYear,
-}) {
-  const shortName = schoolShortName(schoolName);
-  const extra = [];
-
-  if (schoolIndex === 1 || schoolIndex === 4 || schoolIndex === 7) {
-    extra.push({
-      name: `Local Holiday - ${shortName}`,
+function buildBaseSchedules(academicStartYear, academicEndYear) {
+  return [
+    {
+      key: "school_term",
+      name: `School Term ${academicStartYear}/${academicEndYear}`,
+      type: ScheduleType.TERM,
+      startDate: dateYMD(academicStartYear, 9, 1),
+      endDate: dateYMD(academicEndYear, 6, 30),
+    },
+    {
+      key: "christmas_holidays",
+      name: `Christmas Holidays ${academicStartYear}/${academicEndYear}`,
       type: ScheduleType.HOLIDAY,
-      startDate: dateYMD(academicEndYear, 3, 17),
-      endDate: dateYMD(academicEndYear, 3, 17),
-    });
-  }
-
-  if (schoolIndex === 2 || schoolIndex === 8) {
-    extra.push({
-      name: `Staff Training Day - ${shortName}`,
-      type: ScheduleType.HOLIDAY,
-      startDate: dateYMD(academicEndYear, 1, 31),
-      endDate: dateYMD(academicEndYear, 1, 31),
-    });
-  }
-
-  if (supportsHalfDay() && (schoolIndex === 0 || schoolIndex === 3 || schoolIndex === 6)) {
-    extra.push({
-      name: `Christmas Half Day - ${shortName}`,
-      type: ScheduleType.HALF_DAY,
-      startDate: dateYMD(academicStartYear, 12, 20),
-      endDate: dateYMD(academicStartYear, 12, 20),
-    });
-  }
-
-  if (schoolIndex === 5) {
-    extra.push({
-      name: `Community Event Closure - ${shortName}`,
-      type: ScheduleType.HOLIDAY,
-      startDate: dateYMD(academicEndYear, 5, 9),
-      endDate: dateYMD(academicEndYear, 5, 9),
-    });
-  }
-
-  return extra;
+      startDate: dateYMD(academicStartYear, 12, 24),
+      endDate: dateYMD(academicEndYear, 1, 3),
+    },
+  ];
 }
 
+function buildSchoolSpecificSchedules() {
+  return [];
+}
 async function seedSchedulesForSchool({
   schoolId,
   schoolName,
