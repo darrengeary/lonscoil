@@ -3,8 +3,7 @@
 import { auth } from "@/auth";
 import { prisma } from "@/lib/db";
 import { NextResponse } from "next/server";
-
-type ScheduleType = "TERM" | "HOLIDAY" | "HALF_DAY";
+import type { ScheduleType } from "@prisma/client";
 
 function getSchoolIdParam(req: Request) {
   const url = new URL(req.url);
